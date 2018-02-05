@@ -6,7 +6,7 @@
 SoftwareSerial mySerial(10, 11, true); // RX, TX
 class Scales {
   private:
-    
+
     long prevRecTime = 0;
     int result = 0;
     byte mesLeng = 0; //todo:rename
@@ -21,49 +21,35 @@ class Scales {
     }
     void listenScales() {
       if (mySerial.available()) {
-        if (millis() - prevRecTime > 1000) {
-          Serial.println(mesLeng);
+        if (millis() - prevRecTime > 1000) {  //this line is magic but nobody cares.. for now.. watch it
+          //          Serial.println(mesLeng);  //I will not delete this line. It was used to confirm that datasheet is wrong and message length is variable. Brilliant, devs!
           mesLeng = 0;
         } else {
           mesLeng++;
         }
         prevRecTime = millis();
-        
-     
 
         byte input = mySerial.read();
-        //    raw = sprintf("08D
-        byte revput = (input);
-        unsigned int uint = revput & 255;
-
-        serPrintLeadingZ(input);
-        Serial.print(input, BIN);
-        Serial.print("\t");
-        serPrintLeadingZ(uint);
-        Serial.print(uint, BIN);
-        Serial.print("\t");
 
         if (mesLeng == 2 || mesLeng == 7) {
-          result = uint;
-          Serial.print(uint);
+          result = input;
+
         } else if (mesLeng == 3 || mesLeng == 8) {
-          result += 256 * uint;
-          Serial.print (result);
-        } else {
-          Serial.print("0x");
-          Serial.print(uint, HEX);
+          result += 256 * input;
+          Serial.print ("Got mass: ");
+          Serial.println(result);
         }
-        Serial.println();
+
         if (Serial.available()) {
           int input = Serial.read();
           Serial.print("Received this: ");
           Serial.print(input);
-          Serial.println("But have no idea what to do with it");
-//          mySerial.write(b);
+          Serial.println("But have no idea what to do with it. Thanks for support anyway.");
+          //          mySerial.write(b);
         }
       }
     }
-  
+
 
 };
 
@@ -81,7 +67,7 @@ void setup() {
 
 
 void loop() { // run over and over
-
+  scales->listenScales();
 }
 
 byte bitswap (byte x)
