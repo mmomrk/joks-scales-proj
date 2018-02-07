@@ -1,9 +1,13 @@
+#include <Wire.h>
+
 #include <SoftwareSerial.h>
 
 //The circuit:
 // * RX is digital pin 10 (connect to TX of other device)
 // * TX is digital pin 11 (connect to RX of other device)
-SoftwareSerial mySerial(10, 11, true); // RX, TX
+SoftwareSerial mySerial(10, 11, true); // RX, TX  //Do not refactor this line. DOn't know what this does and don't know how to hid it in the code
+
+
 class Scales {
   private:
 
@@ -63,45 +67,8 @@ void setup() {
 }
 
 
-
-
-
 void loop() { // run over and over
   scales->listenScales();
 }
 
-byte bitswap (byte x)
-{
-  byte result;
-
-  asm("mov __tmp_reg__, %[in] \n\t"
-      "lsl __tmp_reg__  \n\t"   /* shift out high bit to carry */
-      "ror %[out] \n\t"  /* rotate carry __tmp_reg__to low bit (eventually) */
-      "lsl __tmp_reg__  \n\t"   /* 2 */
-      "ror %[out] \n\t"
-      "lsl __tmp_reg__  \n\t"   /* 3 */
-      "ror %[out] \n\t"
-      "lsl __tmp_reg__  \n\t"   /* 4 */
-      "ror %[out] \n\t"
-
-      "lsl __tmp_reg__  \n\t"   /* 5 */
-      "ror %[out] \n\t"
-      "lsl __tmp_reg__  \n\t"   /* 6 */
-      "ror %[out] \n\t"
-      "lsl __tmp_reg__  \n\t"   /* 7 */
-      "ror %[out] \n\t"
-      "lsl __tmp_reg__  \n\t"   /* 8 */
-      "ror %[out] \n\t"
-      : [out] "=r" (result) : [in] "r" (x));
-  return (result);
-}
-
-void serPrintLeadingZ(byte questioned) {
-  for (int i = 0; i < 8; i++)
-  {
-    if (questioned < pow(2, i)) {
-      Serial.print(B0);
-    }
-  }
-}
 
