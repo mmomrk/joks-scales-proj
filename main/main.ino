@@ -1,5 +1,6 @@
 #include <RTClib.h>
-
+//#include "linreg.h"
+#include <math.h>
 #include <Wire.h>
 
 #include <SoftwareSerial.h>
