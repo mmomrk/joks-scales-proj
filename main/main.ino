@@ -10,10 +10,12 @@ SoftwareSerial mySerial(10, 11, true); // RX, TX  //Do not refactor this line. D
 RTC_DS1307 RTC;
 
 
-#define SCALES_WAIT_SEC  5
+#define SCALES_WAIT_SEC  4
 #define AVER_PTS  3 //used for tests
 #define MAXLEN 128  //double buffer for average points
-#define RHO 1.
+#define RHO 1.  //with good precision
+
+
 
 uint32_t getSeconds(void) {
   DateTime now = RTC.now();
@@ -35,7 +37,7 @@ void setupSerial(void) {
   Serial.begin(57600);
   while (!Serial) {
   }
-  Serial.println("Serial is on, babe");
+  Serial.println("Serial is on, babe. Let's get to work");
 }
 
 class Scales {
@@ -44,64 +46,56 @@ class Scales {
     long prevRecTime = 0;
 
     byte mesLeng = 0; //todo:rename
-  public:    void setupSWSerial() {
+  public:
+    void setupSWSerial() {
       // set the data rate for the SoftwareSerial port
       mySerial.begin(4800);
     }
     int waitGetReading() {
+      byte command = 74;
+      mySerial.write(command);
+
       int result = -1;
-      //      Serial.println("Reading scales");
+      Serial.println("Reading scales");
       long callTime = millis();
-      bool nok = true;
-      while (millis() - callTime < SCALES_WAIT_SEC * 1000 || nok) //I cannot rely on scales messages
+      bool nok = true;  //OK when got at least 8 bytes from scales //or 5
+      //      while (millis() - callTime < SCALES_WAIT_SEC * 1000 || nok) //I cannot rely on scales messages
+      while (millis() - callTime < SCALES_WAIT_SEC * 1000 ) //DEBUG
       {
         if (mySerial.available()) {
 
-          if (millis() - prevRecTime > 3000) {  //this line is magic but nobody cares.. for now.. watch it
+          if (millis() - prevRecTime > 1000) {  //this line is magic but nobody cares.. for now.. watch it
             //            Serial.print("Mes leng: ");
             //            Serial.println(mesLeng);  //I will not delete this line. It was used to confirm that datasheet is wrong and message length is variable. Brilliant, devs!
             mesLeng = 0;
           } else {
             mesLeng++;
-            if (mesLeng > 7) {
+            if (mesLeng > 4) {
               nok = false;
             }
           }
           prevRecTime = millis();
 
           byte input = mySerial.read();
-          //          Serial.print(mesLeng);
-          //          Serial.print(" - ");
-          //          Serial.println(input);  //used for debug only
+          Serial.print(mesLeng);
+          Serial.print(" - ");
+          Serial.println(input);  //used for debug only
           if (mesLeng == 2 || mesLeng == 7) {
             result = input;
-            Serial.print("lower mass: ");
-            Serial.println(result);
+            //            Serial.print("lower mass: ");
+            //            Serial.println(result);
           } else if (mesLeng == 3 || mesLeng == 8) {
             int intput = input;
             result += 256 * intput;
-            Serial.print ("Got upper mass: ");
-            Serial.println(intput);
+            //            Serial.print ("Got upper mass: ");
+            //            Serial.println(intput);
           }
-
-
-          //Useless block:
-          if (Serial.available()) { //this block handles USB communication. Basically useless
-            int input = Serial.read();
-            Serial.print("Received this: ");
-            Serial.print(input);
-            Serial.println("But have no idea what to do with it. Thanks for support anyway.");
-          } else {
-            digitalWrite(LED_BUILTIN, HIGH);
-          }
-          //Endof useless block
         }
       }
       Serial.print("Got mass: ");
       Serial.println(result);
       return (result);
     }
-
 };
 
 
@@ -134,6 +128,7 @@ class Chronometer { //DO NOT MOVE
       reset();
     }
     void reset(void) {
+      Serial.println("CHR RESET");
       startTime = getSeconds();
     }
     uint32_t curTime() {
@@ -167,6 +162,9 @@ class LinReg {
       }
     }
     void dump() {
+      Serial.println("DUMP CURRENT n");
+      Serial.println(n);
+
       int nw = n % (MAXLEN / 2);
       int imin = 0;
       int imax = n;
@@ -177,12 +175,15 @@ class LinReg {
       dump(imin, imax);
     }
     void reset() {
-      Serial.println("Resetting regressor because weights grew");
+      Serial.println("Resetting regressor");
       n = 0;
       for (int i = 0; i < MAXLEN; i++) {
         x[i] = 0;
         y[i] = 0;
       }
+      Serial.println("AFTER RESET CURRENT n");
+      Serial.println(n);
+
     }
 
     void add (float xn, float yn) {
@@ -192,6 +193,12 @@ class LinReg {
       x[MAXLEN / 2 + nw] = xn;
       y[MAXLEN / 2 + nw] = yn;
       n++;
+      Serial.println("ADD CURRENT n, nw");
+      Serial.println(n);
+      Serial.println(nw);
+      //      Serial.println("I HAVE PUT TIME AND MASS:");
+      //      Serial.println(x[nw]);
+      //      Serial.println(y[nw]);
     }
 
     float getCoeff(int points) {
@@ -223,7 +230,7 @@ class LinReg {
       float t = x[imax - 1] - x[imin];
       Serial.print("Averaging period seconds ");
       Serial.println(t);
-      Serial.print ("cur n");
+      Serial.print ("cur n ");
       Serial.println(n);
 
       for (int i = imin; i < imax; i++) {
@@ -259,6 +266,17 @@ Chronometer *chr;
 LinReg *lr;
 int prevMass = 0;
 
+
+
+float grSecToMlHr(float grSec) {
+  float ans = grSecToMlMin(grSec) * 60;
+  return ans;
+}
+float grSecToMlMin(float grSec) {
+  float ans = grSec / RHO * 60;
+  return ans;
+}
+
 void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
   setupSerial();
@@ -269,52 +287,79 @@ void setup() {
   lr = new LinReg();
   prevMass = scales->waitGetReading();
   Serial.println("Setup is over");
+  Serial.println();
 }
 
-float grSecToMlHr(float grSec) {
-  float ans = grSecToMlMin(grSec) * 60;
-  return ans;
-}
-float grSecToMlMin(float grSec) {
-  Serial.println("WARNING: FILL THE LIQUID DENSITY FOR TRANSLATION TO WORK");
-  float ans = grSec / RHO * 60;
-  return ans;
+void loop() {
+
+  for (int i = 0; i < AVER_PTS; i++) {
+    uint32_t curTime = chr->curTime();
+    lr->add(curTime, i);
+    delay(1000);
+  }
+  int lenF = MAXLEN / 32; //I thought
+  int lenM = MAXLEN / 8;
+  int lenS = MAXLEN / 2;
+
+  //  float fast = lr->getCoeff(lenF);  //ACHTUNG: this code has super-weird bug: if two of those methods are uncommented they cause buffer to go crazy. I have to stick to only one for no other reason then "Magic". Silly but true
+  //  float mid = lr->getCoeff(lenM);
+  float slow = lr->getCoeff(lenS);
+  Serial.print("Coeff is [ml/sec] fast,mid,slow:");
+  //  Serial.println(fast, 4);
+  //  Serial.println(mid, 4);
+  Serial.println(slow, 4);
+//  Serial.print("Coeff is [ml/min] fast,mid,slow:");
+  //  Serial.println(grSecToMlMin(fast), 4);
+  //  Serial.println(grSecToMlMin(mid), 4);
+//  Serial.println(grSecToMlMin(slow), 4);
+//  Serial.print("Coeff is [ml/hour] fast,mid,slow:");
+  //  Serial.println(grSecToMlHr(fast), 4);
+  //  Serial.println(grSecToMlHr(mid), 4);
+//  Serial.println(grSecToMlHr(slow), 4);
+
 }
 
-void loop() { // run over and over
+void _loop() { // run over and over
+
   for (int i = 0; i < AVER_PTS; i++) {
     int curMass = scales->waitGetReading();
     if (curMass != -1) {
-      if (curMass > prevMass) {
-        lr->reset();
-        chr->reset();
-      }
-      Serial.print(chr->curTime());
+      //      if (curMass > prevMass) {
+      //        chr->reset();
+      //        lr->reset();
+      //      }
+      uint32_t curTime = chr->curTime();
+      Serial.print(curTime);
       Serial.print(':');
       Serial.println (curMass);
-      lr->add(chr->curTime(), curMass);
+
+      //      Serial.println("I AM PUTTING TIME AND MASS:");
+      //      Serial.println(curTime);
+      //      Serial.println(curMass);
+      lr->add(curTime, curMass);
       prevMass = curMass;
     }
-    delay(1000);
+    delay(10);
   }
 
   //  lr->dump();
-
+  Serial.println("DELAY");
+  delay(3000);
+  Serial.println("ENDOF DELAY");
   float fast = lr->getCoeff(MAXLEN / 32);
-  //  float mid = lr->getCoeff(MAXLEN / 8);
-  //  float slow = lr->getCoeff(MAXLEN / 2);
+  float mid = lr->getCoeff(MAXLEN / 8);
+  float slow = lr->getCoeff(MAXLEN / 2);
   Serial.print("Coeff is [gramm/sec] fast,mid,slow:");
   Serial.println(fast, 4);
-  //  Serial.println(mid, 4);
-  //  Serial.println(slow, 4);
-  //  Serial.print("Coeff is [gramm/min] fast,mid,slow:");
-  //  Serial.println(grSecToMlMin(fast), 4);
-  //  Serial.println(grSecToMlMin(mid), 4);
-  //  Serial.println(grSecToMlMin(slow), 4);
-  //  Serial.print("Coeff is [gramm/hour] fast,mid,slow:");
-  //  Serial.println(grSecToMlHr(fast), 4);
-  //  Serial.println(grSecToMlHr(mid), 4);
-  //  Serial.println(grSecToMlHr(slow), 4);
+  Serial.println(mid, 4);
+  Serial.println(slow, 4);
+  Serial.print("Coeff is [gramm/min] fast,mid,slow:");
+  Serial.println(grSecToMlMin(fast), 4);
+  Serial.println(grSecToMlMin(mid), 4);
+  Serial.println(grSecToMlMin(slow), 4);
+  Serial.print("Coeff is [gramm/hour] fast,mid,slow:");
+  Serial.println(grSecToMlHr(fast), 4);
+  Serial.println(grSecToMlHr(mid), 4);
+  Serial.println(grSecToMlHr(slow), 4);
 }
-
 
