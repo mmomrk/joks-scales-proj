@@ -77,9 +77,9 @@ class Scales {
           prevRecTime = millis();
 
           byte input = mySerial.read();
-          Serial.print(mesLeng);
-          Serial.print(" - ");
-          Serial.println(input);  //used for debug only
+//          Serial.print(mesLeng);
+//          Serial.print(" - ");
+//          Serial.println(input);  //used for debug only
           if (mesLeng == 2 || mesLeng == 7) {
             result = input;
             //            Serial.print("lower mass: ");
@@ -92,8 +92,8 @@ class Scales {
           }
         }
       }
-      Serial.print("Got mass: ");
-      Serial.println(result);
+//      Serial.print("Got mass: ");
+//      Serial.println(result);
       return (result);
     }
 };
@@ -193,9 +193,9 @@ class LinReg {
       x[MAXLEN / 2 + nw] = xn;
       y[MAXLEN / 2 + nw] = yn;
       n++;
-      Serial.println("ADD CURRENT n, nw");
-      Serial.println(n);
-      Serial.println(nw);
+//      Serial.println("ADD CURRENT n, nw");
+//      Serial.println(n);
+//      Serial.println(nw);
       //      Serial.println("I HAVE PUT TIME AND MASS:");
       //      Serial.println(x[nw]);
       //      Serial.println(y[nw]);
@@ -290,7 +290,7 @@ void setup() {
   Serial.println();
 }
 
-void loop() {
+void dbg_loop() {
 
   for (int i = 0; i < AVER_PTS; i++) {
     uint32_t curTime = chr->curTime();
@@ -308,26 +308,26 @@ void loop() {
   //  Serial.println(fast, 4);
   //  Serial.println(mid, 4);
   Serial.println(slow, 4);
-//  Serial.print("Coeff is [ml/min] fast,mid,slow:");
+  //  Serial.print("Coeff is [ml/min] fast,mid,slow:");
   //  Serial.println(grSecToMlMin(fast), 4);
   //  Serial.println(grSecToMlMin(mid), 4);
-//  Serial.println(grSecToMlMin(slow), 4);
-//  Serial.print("Coeff is [ml/hour] fast,mid,slow:");
+  //  Serial.println(grSecToMlMin(slow), 4);
+  //  Serial.print("Coeff is [ml/hour] fast,mid,slow:");
   //  Serial.println(grSecToMlHr(fast), 4);
   //  Serial.println(grSecToMlHr(mid), 4);
-//  Serial.println(grSecToMlHr(slow), 4);
+  //  Serial.println(grSecToMlHr(slow), 4);
 
 }
 
-void _loop() { // run over and over
+void loop() { // run over and over
 
   for (int i = 0; i < AVER_PTS; i++) {
     int curMass = scales->waitGetReading();
     if (curMass != -1) {
-      //      if (curMass > prevMass) {
-      //        chr->reset();
-      //        lr->reset();
-      //      }
+      if (curMass > prevMass) {
+        chr->reset();
+        lr->reset();
+      }
       uint32_t curTime = chr->curTime();
       Serial.print(curTime);
       Serial.print(':');
@@ -343,23 +343,20 @@ void _loop() { // run over and over
   }
 
   //  lr->dump();
-  Serial.println("DELAY");
-  delay(3000);
-  Serial.println("ENDOF DELAY");
-  float fast = lr->getCoeff(MAXLEN / 32);
-  float mid = lr->getCoeff(MAXLEN / 8);
+  //  float fast = lr->getCoeff(MAXLEN / 32);
+  //  float mid = lr->getCoeff(MAXLEN / 8);
   float slow = lr->getCoeff(MAXLEN / 2);
-  Serial.print("Coeff is [gramm/sec] fast,mid,slow:");
-  Serial.println(fast, 4);
-  Serial.println(mid, 4);
-  Serial.println(slow, 4);
-  Serial.print("Coeff is [gramm/min] fast,mid,slow:");
-  Serial.println(grSecToMlMin(fast), 4);
-  Serial.println(grSecToMlMin(mid), 4);
-  Serial.println(grSecToMlMin(slow), 4);
-  Serial.print("Coeff is [gramm/hour] fast,mid,slow:");
-  Serial.println(grSecToMlHr(fast), 4);
-  Serial.println(grSecToMlHr(mid), 4);
+  //  Serial.print("Coeff is [gramm/sec] fast,mid,slow:");
+  //  Serial.println(fast, 4);
+  //  Serial.println(mid, 4);
+  //  Serial.println(slow, 4);
+  //  Serial.print("Coeff is [gramm/min] fast,mid,slow:");
+  //  Serial.println(grSecToMlMin(fast), 4);
+  //  Serial.println(grSecToMlMin(mid), 4);
+  //  Serial.println(grSecToMlMin(slow), 4);
+  Serial.print("Coeff is [ml/hour] fast,mid,slow:");
+  //  Serial.println(grSecToMlHr(fast), 4);
+  //  Serial.println(grSecToMlHr(mid), 4);
   Serial.println(grSecToMlHr(slow), 4);
 }
 
