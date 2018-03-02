@@ -10,7 +10,7 @@ SoftwareSerial mySerial(10, 11, true); // RX, TX  //Do not refactor this line. D
 RTC_DS1307 RTC;
 
 
-#define SCALES_WAIT_SEC  4
+#define SCALES_POLL_PERIOD  4
 #define AVER_PTS  3 //used for tests
 #define MAXLEN 128  //double buffer for average points
 #define RHO 1.  //with good precision
@@ -44,7 +44,7 @@ class Scales {
   private:
 
     long prevRecTime = 0;
-    //int resultI = -1;
+    int resultI = -1; //this is the variable where actual mass is stored during two passes of the method
     byte mesLeng = 0; //todo:rename
   public:
     void setupSWSerial() {
@@ -52,42 +52,53 @@ class Scales {
       mySerial.begin(4800);
     }
     int waitGetReading() {
-      byte command = 74;
-      mySerial.write(command);
 
-      int result = -1;
+
+      int result = -1;  //intermediate result that is return value
       //      Serial.println("Reading scales");
-      long callTime = millis();
-      while (millis() - callTime < SCALES_WAIT_SEC * 1000 ) //DEBUG
+      //      long callTime = millis();
+      if (millis() - prevRecTime > SCALES_POLL_PERIOD * 1000 ) //DEBUG
       {
-        if (mySerial.available()) {
+        //        Serial.println("Waiting 10 seconds before sending poll command");
+        //        delay(10000);
+        byte command = 74;
+        mySerial.write(command);
 
-          if (millis() - prevRecTime > 1000) {  //this line is magic but nobody cares.. for now.. watch it
-            //            Serial.print("Mes leng: ");
-            //            Serial.println(mesLeng);  //I will not delete this line. It was used to confirm that datasheet is wrong and message length is variable. Brilliant, devs!
-            mesLeng = 0;
-            //          resultI = -1;
-          } else {
-            mesLeng++;
-          }
-          prevRecTime = millis();
+      }
+      if (mySerial.available()) {
 
-          byte input = mySerial.read();
-          Serial.print(mesLeng);
-          Serial.print(" - ");
-          Serial.println(input);  //used for debug only
-          if (mesLeng == 2 || mesLeng == 7) {
-            result = input;
-            //            Serial.print("lower mass: ");
-            //            Serial.println(result);
-          } else if (mesLeng == 3 || mesLeng == 8) {
-            int intput = input;
-            result += 256 * intput;
-            //            Serial.print ("Got upper mass: ");
-            //            Serial.println(intput);
+        if (millis() - prevRecTime > 1000) {  //this line is magic but nobody cares.. for now.. watch it
+          //            Serial.print("Mes leng: ");
+          //            Serial.println(mesLeng);  //I will not delete this line. It was used to confirm that datasheet is wrong and message length is variable. Brilliant, devs!
+          mesLeng = 0;
+          resultI = -1;
+
+        } else {
+          mesLeng++;
+        }
+        prevRecTime = millis();
+
+        byte input = mySerial.read();
+        //        Serial.print(mesLeng);
+        //        Serial.print(" * ");
+        //        Serial.println(input);  //used for debug only
+        if (mesLeng == 2 || mesLeng == 7) {
+          resultI = input;
+          //            Serial.print("lower mass: ");
+          //            Serial.println(result);
+        } else if (mesLeng == 3 || mesLeng == 8) {
+          int intput = input;
+
+          result = 256 * intput + resultI;
+          if (mesLeng == 8) {
+            result = -1; //because the message is repeated two times. I could have inserted check here but not now. TODO later
           }
+
+          //            Serial.print ("Got upper mass: ");
+          //            Serial.println(intput);
         }
       }
+      //      }
       //      Serial.print("Got mass: ");
       //      Serial.println(result);
       return (result);
@@ -222,7 +233,7 @@ class LinReg {
         imax = nw + MAXLEN / 2;
         imin = imax - points;
       }
-      //      dump(imin, imax); //debug
+      dump(imin, imax); //debug
       float t = x[imax - 1] - x[imin];
       Serial.print("Averaging period seconds ");
       Serial.println(t);
@@ -274,6 +285,8 @@ float grSecToMlMin(float grSec) {
   return ans;
 }
 
+long prevRecalcTime;
+
 void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
   setupSerial();
@@ -283,6 +296,7 @@ void setup() {
   chr = new Chronometer();
   lr = new LinReg();
   prevMass = scales->waitGetReading();
+  prevRecalcTime = millis();
   Serial.println("Setup is over");
   Serial.println();
 }
@@ -293,8 +307,7 @@ void loop() { // run over and over
     int curMass = scales->waitGetReading();
     if (curMass != -1) {
       if (curMass > prevMass) {
-        Serial.println("Refill detected. Waiting 10 seconds before resetting and continuing");
-        delay(10000);
+
         chr->reset();
         lr->reset();
 
@@ -317,23 +330,26 @@ void loop() { // run over and over
     String inputS = Serial.readString();
     Serial.println(inputS);
   }
-  //  lr->dump();
-  //  float fast = lr->getCoeff(MAXLEN / 32);
-  //  float mid = lr->getCoeff(MAXLEN / 8);
-  float slow = lr->getCoeff(MAXLEN / 2);
-  //  Serial.print("Coeff is [gramm/sec] fast,mid,slow:");
-  //  Serial.println(fast, 4);
-  //    Serial.println(mid, 4);
-  //  Serial.println(slow, 4);
-  //  Serial.print("Coeff is [gramm/min] fast,mid,slow:");
-  //  Serial.println(grSecToMlMin(fast), 4);
-  //  Serial.println(grSecToMlMin(mid), 4);
-  //  Serial.println(grSecToMlMin(slow), 4);
-  Serial.print("Coeff is [ml/hour] _fast_,mid,slow:");
-  //  Serial.println(grSecToMlHr(fast), 4);
-  //  Serial.print(grSecToMlHr(mid), 1);
-  //  Serial.print(" ");
-  Serial.print(grSecToMlHr(slow), 1);
-  Serial.println();
+  if (millis() - prevRecalcTime > 4000) {
+    //  lr->dump();
+    //  float fast = lr->getCoeff(MAXLEN / 32);
+    //  float mid = lr->getCoeff(MAXLEN / 8);
+    float slow = lr->getCoeff(MAXLEN / 2);
+    //  Serial.print("Coeff is [gramm/sec] fast,mid,slow:");
+    //  Serial.println(fast, 4);
+    //    Serial.println(mid, 4);
+    //  Serial.println(slow, 4);
+    //  Serial.print("Coeff is [gramm/min] fast,mid,slow:");
+    //  Serial.println(grSecToMlMin(fast), 4);
+    //  Serial.println(grSecToMlMin(mid), 4);
+    //  Serial.println(grSecToMlMin(slow), 4);
+    Serial.print("Coeff is [ml/hour] _fast_,mid,slow:");
+    //  Serial.println(grSecToMlHr(fast), 4);
+    //  Serial.print(grSecToMlHr(mid), 1);
+    //  Serial.print(" ");
+    Serial.print(grSecToMlHr(slow), 1);
+    Serial.println();
+    prevRecalcTime = millis();
+  }
 }
 
