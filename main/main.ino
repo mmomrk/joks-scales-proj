@@ -44,7 +44,7 @@ class Scales {
   private:
 
     long prevRecTime = 0;
-
+    //int resultI = -1;
     byte mesLeng = 0; //todo:rename
   public:
     void setupSWSerial() {
@@ -56,10 +56,8 @@ class Scales {
       mySerial.write(command);
 
       int result = -1;
-      Serial.println("Reading scales");
+      //      Serial.println("Reading scales");
       long callTime = millis();
-      bool nok = true;  //OK when got at least 8 bytes from scales //or 5
-      //      while (millis() - callTime < SCALES_WAIT_SEC * 1000 || nok) //I cannot rely on scales messages
       while (millis() - callTime < SCALES_WAIT_SEC * 1000 ) //DEBUG
       {
         if (mySerial.available()) {
@@ -68,18 +66,16 @@ class Scales {
             //            Serial.print("Mes leng: ");
             //            Serial.println(mesLeng);  //I will not delete this line. It was used to confirm that datasheet is wrong and message length is variable. Brilliant, devs!
             mesLeng = 0;
+            //          resultI = -1;
           } else {
             mesLeng++;
-            if (mesLeng > 4) {
-              nok = false;
-            }
           }
           prevRecTime = millis();
 
           byte input = mySerial.read();
-//          Serial.print(mesLeng);
-//          Serial.print(" - ");
-//          Serial.println(input);  //used for debug only
+          Serial.print(mesLeng);
+          Serial.print(" - ");
+          Serial.println(input);  //used for debug only
           if (mesLeng == 2 || mesLeng == 7) {
             result = input;
             //            Serial.print("lower mass: ");
@@ -92,8 +88,8 @@ class Scales {
           }
         }
       }
-//      Serial.print("Got mass: ");
-//      Serial.println(result);
+      //      Serial.print("Got mass: ");
+      //      Serial.println(result);
       return (result);
     }
 };
@@ -193,9 +189,9 @@ class LinReg {
       x[MAXLEN / 2 + nw] = xn;
       y[MAXLEN / 2 + nw] = yn;
       n++;
-//      Serial.println("ADD CURRENT n, nw");
-//      Serial.println(n);
-//      Serial.println(nw);
+      //      Serial.println("ADD CURRENT n, nw");
+      //      Serial.println(n);
+      //      Serial.println(nw);
       //      Serial.println("I HAVE PUT TIME AND MASS:");
       //      Serial.println(x[nw]);
       //      Serial.println(y[nw]);
@@ -205,7 +201,7 @@ class LinReg {
       Serial.print("Getting coeff by points: ");
       Serial.println(points);
       if (points > MAXLEN / 2) {
-        Serial.println("ERROR: bad points came to average");
+        Serial.println("ERROR: bad points count came to average");
         points = MAXLEN / 2;
       }
       // initialize variables
@@ -226,12 +222,12 @@ class LinReg {
         imax = nw + MAXLEN / 2;
         imin = imax - points;
       }
-      dump(imin, imax);
+      //      dump(imin, imax); //debug
       float t = x[imax - 1] - x[imin];
       Serial.print("Averaging period seconds ");
       Serial.println(t);
-      Serial.print ("cur n ");
-      Serial.println(n);
+      //      Serial.print ("cur n ");
+      //      Serial.println(n);
 
       for (int i = imin; i < imax; i++) {
         xbar = xbar + x[i];
@@ -272,6 +268,7 @@ float grSecToMlHr(float grSec) {
   float ans = grSecToMlMin(grSec) * 60;
   return ans;
 }
+
 float grSecToMlMin(float grSec) {
   float ans = grSec / RHO * 60;
   return ans;
@@ -290,43 +287,17 @@ void setup() {
   Serial.println();
 }
 
-void dbg_loop() {
-
-  for (int i = 0; i < AVER_PTS; i++) {
-    uint32_t curTime = chr->curTime();
-    lr->add(curTime, i);
-    delay(1000);
-  }
-  int lenF = MAXLEN / 32; //I thought
-  int lenM = MAXLEN / 8;
-  int lenS = MAXLEN / 2;
-
-  //  float fast = lr->getCoeff(lenF);  //ACHTUNG: this code has super-weird bug: if two of those methods are uncommented they cause buffer to go crazy. I have to stick to only one for no other reason then "Magic". Silly but true
-  //  float mid = lr->getCoeff(lenM);
-  float slow = lr->getCoeff(lenS);
-  Serial.print("Coeff is [ml/sec] fast,mid,slow:");
-  //  Serial.println(fast, 4);
-  //  Serial.println(mid, 4);
-  Serial.println(slow, 4);
-  //  Serial.print("Coeff is [ml/min] fast,mid,slow:");
-  //  Serial.println(grSecToMlMin(fast), 4);
-  //  Serial.println(grSecToMlMin(mid), 4);
-  //  Serial.println(grSecToMlMin(slow), 4);
-  //  Serial.print("Coeff is [ml/hour] fast,mid,slow:");
-  //  Serial.println(grSecToMlHr(fast), 4);
-  //  Serial.println(grSecToMlHr(mid), 4);
-  //  Serial.println(grSecToMlHr(slow), 4);
-
-}
-
 void loop() { // run over and over
 
   for (int i = 0; i < AVER_PTS; i++) {
     int curMass = scales->waitGetReading();
     if (curMass != -1) {
       if (curMass > prevMass) {
+        Serial.println("Refill detected. Waiting 10 seconds before resetting and continuing");
+        delay(10000);
         chr->reset();
         lr->reset();
+
       }
       uint32_t curTime = chr->curTime();
       Serial.print(curTime);
@@ -342,21 +313,27 @@ void loop() { // run over and over
     delay(10);
   }
 
+  if (Serial.available()) {
+    String inputS = Serial.readString();
+    Serial.println(inputS);
+  }
   //  lr->dump();
   //  float fast = lr->getCoeff(MAXLEN / 32);
   //  float mid = lr->getCoeff(MAXLEN / 8);
   float slow = lr->getCoeff(MAXLEN / 2);
   //  Serial.print("Coeff is [gramm/sec] fast,mid,slow:");
   //  Serial.println(fast, 4);
-  //  Serial.println(mid, 4);
+  //    Serial.println(mid, 4);
   //  Serial.println(slow, 4);
   //  Serial.print("Coeff is [gramm/min] fast,mid,slow:");
   //  Serial.println(grSecToMlMin(fast), 4);
   //  Serial.println(grSecToMlMin(mid), 4);
   //  Serial.println(grSecToMlMin(slow), 4);
-  Serial.print("Coeff is [ml/hour] fast,mid,slow:");
+  Serial.print("Coeff is [ml/hour] _fast_,mid,slow:");
   //  Serial.println(grSecToMlHr(fast), 4);
-  //  Serial.println(grSecToMlHr(mid), 4);
-  Serial.println(grSecToMlHr(slow), 4);
+  //  Serial.print(grSecToMlHr(mid), 1);
+  //  Serial.print(" ");
+  Serial.print(grSecToMlHr(slow), 1);
+  Serial.println();
 }
 
