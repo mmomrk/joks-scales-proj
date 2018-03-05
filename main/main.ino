@@ -12,10 +12,10 @@ RTC_DS1307 RTC;
 
 #define SCALES_POLL_PERIOD  4
 #define AVER_PTS  3 //used for tests
-#define MAXLEN 128  //double buffer for average points
-#define RHO 1.  //with good precision
-
-
+#define MAXLEN 128  //full buffer length. This is double the number of stored points for averageing
+#define RHO 1.  //Liquid density. With good precision
+int REFILL_DELAY_SEC = 30;  //seconds
+int MIN_TRUSTED_AVERAGE_TIME_SEC = 30;
 
 uint32_t getSeconds(void) {
   DateTime now = RTC.now();
@@ -79,13 +79,13 @@ class Scales {
         prevRecTime = millis();
 
         byte input = mySerial.read();
-        //        Serial.print(mesLeng);
-        //        Serial.print(" * ");
-        //        Serial.println(input);  //used for debug only
+        Serial.print(mesLeng);
+        Serial.print(" * ");
+        Serial.println(input);  //used for debug only
         if (mesLeng == 2 || mesLeng == 7) {
           resultI = input;
-          //            Serial.print("lower mass: ");
-          //            Serial.println(result);
+          Serial.print("lower mass: ");
+          Serial.println(resultI);
         } else if (mesLeng == 3 || mesLeng == 8) {
           int intput = input;
 
@@ -94,13 +94,14 @@ class Scales {
             result = -1; //because the message is repeated two times. I could have inserted check here but not now. TODO later
           }
 
-          //            Serial.print ("Got upper mass: ");
-          //            Serial.println(intput);
+          Serial.print ("Got upper mass: ");
+          Serial.println(intput);
+          Serial.print("Got mass: ");
+          Serial.println(result);
         }
       }
       //      }
-      //      Serial.print("Got mass: ");
-      //      Serial.println(result);
+
       return (result);
     }
 };
@@ -151,9 +152,34 @@ class LinReg {
     //    int maxLen = 128; #defined
     int n;
     float x[MAXLEN], y[MAXLEN];
+
+    int getImax(int points) { //todo refactor
+      // calculations required for linear regression
+      int imin = 0;
+      int imax = n;
+      //      if (n > points) { //or is it >=? todo think
+      //        imin = imax - points;
+      //      }
+      if (n > MAXLEN / 2) {
+        int nw = n % (MAXLEN / 2);
+        imax = nw + MAXLEN / 2;
+      }
+      return (imax);
+    }
+
+    int getImin(int points ) { //todo refactor
+      // calculations required for linear regression
+      int imin = getImax(points) - points;
+      if (imin < 0) {
+        imin = 0;
+      }
+      return (imin);
+    }
   public:
     LinReg() {
       reset();
+      Serial.println("LR RESET DONE");
+      dump();
     }
 
     void dump(int from, int to) {
@@ -183,32 +209,58 @@ class LinReg {
     }
     void reset() {
       Serial.println("Resetting regressor");
+      Serial.print ("BEFORE RESET CURRENT n = ");
+      Serial.println(n);
       n = 0;
+      Serial.print ("DONE RESET CURRENT n = ");
+      Serial.println(n);
       for (int i = 0; i < MAXLEN; i++) {
         x[i] = 0;
         y[i] = 0;
       }
-      Serial.println("AFTER RESET CURRENT n");
+      Serial.print ("AFTER RESET CURRENT n = ");
       Serial.println(n);
 
     }
 
     void add (float xn, float yn) {
+      Serial.print(n);
       int nw = n % (MAXLEN / 2);
       x[nw] = xn;
       y[nw] = yn;
       x[MAXLEN / 2 + nw] = xn;
       y[MAXLEN / 2 + nw] = yn;
       n++;
-      //      Serial.println("ADD CURRENT n, nw");
-      //      Serial.println(n);
-      //      Serial.println(nw);
-      //      Serial.println("I HAVE PUT TIME AND MASS:");
-      //      Serial.println(x[nw]);
-      //      Serial.println(y[nw]);
+      Serial.println(" ADD CURRENT n, nw");
+      Serial.println(n);
+      Serial.println(nw);
+      Serial.println("I HAVE PUT TIME AND MASS:");
+      Serial.println(x[nw]);
+      Serial.println(y[nw]);
     }
 
-    float getCoeff(int points) {
+    bool canBeTrusted(int points) { //this method checks if there is enough data for average value to be correct  //warning: with certain points variable this may always return false because of small time for integration. See TRUSTED_AVERAGE_TIME
+      return canBeTrusted(getImin(points), getImax(points));
+    }
+
+    bool canBeTrusted(int imin, int imax) {
+      Serial.print(imin);
+      Serial.print (" can be trusted ");
+      Serial.println(imax);
+      dump(imin, imax);
+      float t = x[imax - 1] - x[imin];
+      Serial.print("Averaging period seconds ");
+      Serial.println(t);
+      if (t < MIN_TRUSTED_AVERAGE_TIME_SEC) {
+        //        Serial.print("Time too smal ");
+        //        Serial.println(MIN_TRUSTED_AVERAGE_TIME_SEC);
+        return (false);
+      } else {
+        return (true);
+      }
+    }
+
+    float getCoeff(int points) {  //don't forget to call canBeTrusted method before using this one. It may return nan and not bother about it
       Serial.print("Getting coeff by points: ");
       Serial.println(points);
       if (points > MAXLEN / 2) {
@@ -222,21 +274,10 @@ class LinReg {
       float xsqbar = 0;
       float lrCoef[2] = {0, 0};
 
-      // calculations required for linear regression
-      int imin = 0;
-      int imax = n;
-      if (n > points) { //or is it >=? todo think
-        imin = imax - points;
-      }
-      if (n > MAXLEN / 2) {
-        int nw = n % (MAXLEN / 2);
-        imax = nw + MAXLEN / 2;
-        imin = imax - points;
-      }
-      dump(imin, imax); //debug
-      float t = x[imax - 1] - x[imin];
-      Serial.print("Averaging period seconds ");
-      Serial.println(t);
+      int imin = getImin(points);
+      int imax = getImax(points);
+      //      dump(imin, imax); //debug
+
       //      Serial.print ("cur n ");
       //      Serial.println(n);
 
@@ -263,17 +304,20 @@ class LinReg {
         numM += dx * dy;
         denM += dx * dx;
       }
-
       return ( numM / denM);
     }
 };
 
-Scales *scales ; //DO NOT MOVE. Or it will not init
-Chronometer *chr;
-LinReg *lr;
-int prevMass = 0;
 
-
+//void refillDelay() {  //not good. blocking. Makes scales class return stupid things that cause more delay. Stupid
+//  Serial.print("Refill detected. Waiting ");
+//  Serial.print(REFILL_DELAY);
+//  Serial.println(" seconds before resuming operation");
+//  for (int i = REFILL_DELAY; i > 0; i--) {
+//    Serial.println(i - 1); //to pass a satisfying 0 seconds in the end
+//    delay(1000);
+//  }
+//}
 
 float grSecToMlHr(float grSec) {
   float ans = grSecToMlMin(grSec) * 60;
@@ -285,7 +329,13 @@ float grSecToMlMin(float grSec) {
   return ans;
 }
 
+
+Scales *scales ; //DO NOT MOVE. Or it will not init
+Chronometer *chr;
+LinReg *lr;
+int prevMass = 0;
 long prevRecalcTime;
+long refillEnd;
 
 void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
@@ -297,6 +347,7 @@ void setup() {
   lr = new LinReg();
   prevMass = scales->waitGetReading();
   prevRecalcTime = millis();
+  refillEnd = millis();
   Serial.println("Setup is over");
   Serial.println();
 }
@@ -307,10 +358,11 @@ void loop() { // run over and over
     int curMass = scales->waitGetReading();
     if (curMass != -1) {
       if (curMass > prevMass) {
-
+        //        refillDelay();
+        Serial.print(prevMass);
         chr->reset();
         lr->reset();
-
+        refillEnd = millis() + REFILL_DELAY_SEC * 1000;
       }
       uint32_t curTime = chr->curTime();
       Serial.print(curTime);
@@ -320,33 +372,23 @@ void loop() { // run over and over
       //      Serial.println("I AM PUTTING TIME AND MASS:");
       //      Serial.println(curTime);
       //      Serial.println(curMass);
-      lr->add(curTime, curMass);
+      if (millis() > refillEnd) {
+        lr->add(curTime, curMass);
+      }
       prevMass = curMass;
     }
-    delay(10);
+    delay(10);  //DO NOT DELETE. WIthout this delay reading scales does not work. If I don't find a reason it will be reasonable to move it to the scales class. TODO, watch it
   }
 
   if (Serial.available()) {
     String inputS = Serial.readString();
     Serial.println(inputS);
   }
-  if (millis() - prevRecalcTime > 4000) {
-    //  lr->dump();
-    //  float fast = lr->getCoeff(MAXLEN / 32);
-    //  float mid = lr->getCoeff(MAXLEN / 8);
-    float slow = lr->getCoeff(MAXLEN / 2);
-    //  Serial.print("Coeff is [gramm/sec] fast,mid,slow:");
-    //  Serial.println(fast, 4);
-    //    Serial.println(mid, 4);
-    //  Serial.println(slow, 4);
-    //  Serial.print("Coeff is [gramm/min] fast,mid,slow:");
-    //  Serial.println(grSecToMlMin(fast), 4);
-    //  Serial.println(grSecToMlMin(mid), 4);
-    //  Serial.println(grSecToMlMin(slow), 4);
+
+  int points = MAXLEN / 2;  //to average. Number of points. Not time. Ideally it should be measure in minimal acceptable error. But not yet. TODO maybe
+  if (millis() - prevRecalcTime > 4000 && lr->canBeTrusted(points)) { //removed commented-out section with averaging with diffeent points value. FOr certain reason adding those method calls resulted in complete mess of linear regressor work. Check git if you want to play with it
+    float slow = lr->getCoeff(points );
     Serial.print("Coeff is [ml/hour] _fast_,mid,slow:");
-    //  Serial.println(grSecToMlHr(fast), 4);
-    //  Serial.print(grSecToMlHr(mid), 1);
-    //  Serial.print(" ");
     Serial.print(grSecToMlHr(slow), 1);
     Serial.println();
     prevRecalcTime = millis();
