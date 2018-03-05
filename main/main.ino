@@ -14,8 +14,20 @@ RTC_DS1307 RTC;
 #define AVER_PTS  3 //used for tests
 #define MAXLEN 128  //full buffer length. This is double the number of stored points for averageing
 #define RHO 1.  //Liquid density. With good precision
-int REFILL_DELAY_SEC = 30;  //seconds
-int MIN_TRUSTED_AVERAGE_TIME_SEC = 30;
+const int REFILL_DELAY_SEC = 30;  //seconds
+const int MIN_TRUSTED_AVERAGE_TIME_SEC = 30;
+const int MASS_PUMP_ON = 1500;
+const int MASS_PUMP_OFF = 3200;
+
+
+
+void setupSerial(void) {
+  // Open serial communications and wait for port to open:
+  Serial.begin(57600);
+  while (!Serial) {
+  }
+  Serial.println("Serial is on, babe. Let's get to work");
+}
 
 uint32_t getSeconds(void) {
   DateTime now = RTC.now();
@@ -32,13 +44,6 @@ void setupRTC(void) {
   }
 }
 
-void setupSerial(void) {
-  // Open serial communications and wait for port to open:
-  Serial.begin(57600);
-  while (!Serial) {
-  }
-  Serial.println("Serial is on, babe. Let's get to work");
-}
 
 class Scales {
   private:
@@ -84,8 +89,8 @@ class Scales {
         Serial.println(input);  //used for debug only
         if (mesLeng == 2 || mesLeng == 7) {
           resultI = input;
-          Serial.print("lower mass: ");
-          Serial.println(resultI);
+          //          Serial.print("lower mass: ");
+          //          Serial.println(resultI);
         } else if (mesLeng == 3 || mesLeng == 8) {
           int intput = input;
 
@@ -94,8 +99,8 @@ class Scales {
             result = -1; //because the message is repeated two times. I could have inserted check here but not now. TODO later
           }
 
-          Serial.print ("Got upper mass: ");
-          Serial.println(intput);
+          //          Serial.print ("Got upper mass: ");
+          //          Serial.println(intput);
           Serial.print("Got mass: ");
           Serial.println(result);
         }
@@ -177,9 +182,9 @@ class LinReg {
     }
   public:
     LinReg() {
-      reset();
-      Serial.println("LR RESET DONE");
-      dump();
+      //      reset();
+      //      Serial.println("LR RESET DONE");
+      //      dump();
     }
 
     void dump(int from, int to) {
@@ -188,9 +193,9 @@ class LinReg {
       Serial.print(" to ");
       Serial.println(to);
       for (int i = from; i < to; i++) {
-        Serial.print(x[i], 0);
+        Serial.print(x[i], 0.);
         Serial.print(" - ");
-        Serial.print(y[i], 0);
+        Serial.print(y[i], 0.);
         Serial.println('\t');
       }
     }
@@ -308,7 +313,6 @@ class LinReg {
     }
 };
 
-
 //void refillDelay() {  //not good. blocking. Makes scales class return stupid things that cause more delay. Stupid
 //  Serial.print("Refill detected. Waiting ");
 //  Serial.print(REFILL_DELAY);
@@ -330,68 +334,161 @@ float grSecToMlMin(float grSec) {
 }
 
 
+class ExpoAverage {
+  private:
+    const float INTEGRAT_TIME = 20; //sec
+    float MULT = .9;
+    float bank = 0.;  //or buffer or average or numerator or whatever you call it. I call it bank today
+    float dummy = 0;
+    float denom = 1;
+
+  public:
+    bool firstPut = true;
+    void init() {
+      MULT = exp(-4. / INTEGRAT_TIME);
+      Serial.print("MULT IS ");
+      Serial.println(MULT);
+      float sum = 0;
+      float prevSum = -1;
+      while (sum != prevSum) {
+        prevSum = sum;
+        sum = sum * MULT + 1;
+      }
+      denom = sum;
+      Serial.print ("Denominator converged to:");
+      Serial.println(denom);
+    }
+    void add(int dt, int dm) {
+      if (dt == 0) {
+        Serial.println("Insertion rejected");
+        return;
+      } else {
+        Serial.print(dt);
+        Serial.print(" dt accepted dm ");
+        Serial.println(dm);
+        float dmbydt = 1.* dm / dt;
+        if (firstPut) { //for faster converge
+
+          bank = dmbydt * denom;
+          firstPut = false;
+        } else {  //for the rest of our lives
+          dummy = dummy * MULT + 1;
+          bank = bank * MULT + dmbydt;
+          Serial.print (bank);
+          Serial.print(" BANK and DENOM ");
+          Serial.println(denom);
+        }
+      }
+    }
+    float getTrustRate() {
+      return (dummy / denom);
+    }
+    float getAver() {
+      return bank / denom;
+    }
+    void reset(){
+      dummy = 0;  //to avoid bad transitional effects
+      firstPut = true;
+    }
+};
+
+
+
+
 Scales *scales ; //DO NOT MOVE. Or it will not init
 Chronometer *chr;
-LinReg *lr;
+//LinReg *lr;
+ExpoAverage *ea;
 int prevMass = 0;
-long prevRecalcTime;
+long prevRecalcTime;  //msec
 long refillEnd;
+long prevMassTime;//sec
+int requiredFlow  = 0;
+
 
 void setup() {
-  pinMode(LED_BUILTIN, OUTPUT);
+  //  pinMode(LED_BUILTIN, OUTPUT);
+  
   setupSerial();
+  if (MASS_PUMP_ON > MASS_PUMP_OFF){  //todo: pump handling
+    while (true){
+      Serial.print("ASSERT FAILED. BAD MASS PUMP SETTINGS");
+    }
+  }
   scales = new Scales();
   scales->setupSWSerial();
   setupRTC();
   chr = new Chronometer();
-  lr = new LinReg();
-  prevMass = scales->waitGetReading();
+  ea = new ExpoAverage();
+  ea->init();
+  //  lr = new LinReg();
+  //  lr->reset();
+  //  lr->dump();
   prevRecalcTime = millis();
   refillEnd = millis();
+  prevMassTime = chr->curTime();
   Serial.println("Setup is over");
   Serial.println();
 }
 
 void loop() { // run over and over
 
-  for (int i = 0; i < AVER_PTS; i++) {
-    int curMass = scales->waitGetReading();
-    if (curMass != -1) {
-      if (curMass > prevMass) {
-        //        refillDelay();
-        Serial.print(prevMass);
-        chr->reset();
-        lr->reset();
-        refillEnd = millis() + REFILL_DELAY_SEC * 1000;
-      }
-      uint32_t curTime = chr->curTime();
-      Serial.print(curTime);
-      Serial.print(':');
-      Serial.println (curMass);
+  //  for (int i = 0; i < AVER_PTS; i++) {
+  int curMass = scales->waitGetReading();
+  if (curMass != -1) {
+    if (curMass > prevMass) {
+      //        refillDelay();
+      Serial.println("RESET");
+      chr->reset();
+      ea->reset();
+      //      lr->reset();
+      refillEnd = millis() + REFILL_DELAY_SEC * 1000;
 
-      //      Serial.println("I AM PUTTING TIME AND MASS:");
-      //      Serial.println(curTime);
-      //      Serial.println(curMass);
-      if (millis() > refillEnd) {
-        lr->add(curTime, curMass);
-      }
-      prevMass = curMass;
     }
-    delay(10);  //DO NOT DELETE. WIthout this delay reading scales does not work. If I don't find a reason it will be reasonable to move it to the scales class. TODO, watch it
+    uint32_t curTime = chr->curTime();
+    Serial.print(curTime);
+    Serial.print(':');
+    Serial.println (curMass);
+
+    Serial.println("I AM PUTTING TIME AND MASS:");
+    Serial.println(curTime);
+    Serial.println(curMass);
+    if (millis() > refillEnd) {
+      ea->add(curTime - prevMassTime, prevMass - curMass);
+      //      lr->add(curTime, curMass);
+    }
+    prevMass = curMass;
+    prevMassTime = curTime;
   }
+  delay(10);  //DO NOT DELETE. WIthout this delay reading scales does not work. If I don't find a reason it will be reasonable to move it to the scales class. TODO, watch it
+  //  }
 
   if (Serial.available()) {
     String inputS = Serial.readString();
     Serial.println(inputS);
+    requiredFlow = inputS.toInt();  //looks pretty ugly, I agree
+    Serial.print("Got task flow: ");
+    Serial.println(requiredFlow);
   }
-
-  int points = MAXLEN / 2;  //to average. Number of points. Not time. Ideally it should be measure in minimal acceptable error. But not yet. TODO maybe
-  if (millis() - prevRecalcTime > 4000 && lr->canBeTrusted(points)) { //removed commented-out section with averaging with diffeent points value. FOr certain reason adding those method calls resulted in complete mess of linear regressor work. Check git if you want to play with it
-    float slow = lr->getCoeff(points );
+  //
+  //    int points = MAXLEN / 2;  //to average. Number of points. Not time. Ideally it should be measure in minimal acceptable error. But not yet. TODO maybe
+  int points = 30;
+  //  if (millis() - prevRecalcTime > 4000 && lr->canBeTrusted(points)) { //removed commented-out section with averaging with diffeent points value. FOr certain reason adding those method calls resulted in complete mess of linear regressor work. Check git if you want to play with it
+  if (millis() - prevRecalcTime > 10000 ) { //removed commented-out section with averaging with diffeent points value. FOr certain reason adding those method calls resulted in complete mess of linear regressor work. Check git if you want to play with it
+    //    float slow = lr->getCoeff(points );
     Serial.print("Coeff is [ml/hour] _fast_,mid,slow:");
-    Serial.print(grSecToMlHr(slow), 1);
-    Serial.println();
+    //    Serial.print(grSecToMlHr(slow), 1);
+    //    Serial.println();
     prevRecalcTime = millis();
+    float mlPerHr = grSecToMlHr(ea->getAver());
+    Serial.println(mlPerHr);
+    Serial.print("Trust rate: ");
+    float tr = ea->getTrustRate();
+    Serial.println(tr);
+    if (tr > .9) {
+      Serial.print("#");
+      Serial.println( requiredFlow / mlPerHr);
+    }
   }
 }
 
