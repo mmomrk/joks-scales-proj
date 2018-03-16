@@ -512,8 +512,8 @@ void loop() { // run over and over
       ea->reset();
       //      lr->reset();
       refillEnd = millis() + REFILL_DELAY_SEC * 1000;
-
     }
+
     uint32_t curTime = chr->curTime();
     if (curTime > 100000) { //perhaps due to disconnect bad big time reading happens. No idea why
       Serial.println("WARNING: BAD TIME RECEIVED. Dropping input");
@@ -533,9 +533,12 @@ void loop() { // run over and over
       prevMass = curMass;
       prevMassTime = curTime;
       if (millis() > nextSDTime && millis() > refillEnd ) { //todo: refactor this to be hidden inside sd class
+        Serial.println("printing to sd");
         nextSDTime = millis() +  SD_TIME_DELAY_SEC * 1000;
         sd->checkOFAndWrite(chr->curDate(), curMass);
 
+      } else{
+        Serial.println("waiting for sd");
       }
     }
   }
