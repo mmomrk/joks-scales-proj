@@ -1,3 +1,5 @@
+#include <SD.h>
+
 #include <RTClib.h>
 #include <math.h>
 #include <Wire.h>
@@ -6,7 +8,9 @@
 //The circuit:
 // * RX is digital pin 10 (connect to TX of other device)
 // * TX is digital pin 11 (connect to RX of other device)
-SoftwareSerial mySerial(10, 11, true); // RX, TX  //Do not refactor this line. DOn't know what this does and don't know how to hid it in the code
+//uncomment this if the new line does not work
+//SoftwareSerial mySerial(10, 11, true); // RX, TX  //Do not refactor this line. DOn't know what this does and don't know how to hid it in the code
+SoftwareSerial mySerial(8, 9, true); // RX, TX  //Do not refactor this line. DOn't know what this does and don't know how to hid it in the code
 RTC_DS1307 RTC;
 
 
@@ -18,7 +22,7 @@ const int REFILL_DELAY_SEC = 30;  //seconds
 const int MIN_TRUSTED_AVERAGE_TIME_SEC = 30;
 const int MASS_PUMP_ON = 1500;
 const int MASS_PUMP_OFF = 3200;
-
+const int SD_TIME_DELAY_SEC = 30;
 
 
 void setupSerial(void) {
@@ -28,22 +32,6 @@ void setupSerial(void) {
   }
   Serial.println("Serial is on, babe. Let's get to work");
 }
-
-uint32_t getSeconds(void) {
-  DateTime now = RTC.now();
-  return now.unixtime();
-}
-
-void setupRTC(void) {
-  Wire.begin();
-  RTC.begin();
-  if (! RTC.isrunning()) {
-    Serial.println("RTC is NOT running!");
-    // following line sets the RTC to the date & time this sketch was compiled
-    RTC.adjust(DateTime(__DATE__, __TIME__));
-  }
-}
-
 
 class Scales {
   private:
@@ -138,16 +126,44 @@ class Chronometer { //DO NOT MOVE
     uint32_t startTime = 0;
   public:
     Chronometer() {
+      setupRTC();
       reset();
+    }
+    void setupRTC(void) {
+      Wire.begin();
+      RTC.begin();
+      if (! RTC.isrunning()) {
+        Serial.println("RTC is NOT running!");
+        // following line sets the RTC to the date & time this sketch was compiled
+        RTC.adjust(DateTime(__DATE__, __TIME__));
+      }
     }
     void reset(void) {
       Serial.println("CHR RESET");
       startTime = getSeconds();
     }
-    uint32_t curTime() {
+    uint32_t curTime() {  //returns seconds
       uint32_t ct ;
       ct = getSeconds() - startTime;
       return (ct);
+    }
+    uint32_t getSeconds(void) { //unixtime seconds
+      DateTime now = RTC.now();
+      return now.unixtime();
+    }
+    String curDate() {
+      String rv = ""; //retval
+      DateTime now = RTC.now();
+      rv += String(now.year());
+      rv += String("-");
+      rv += String(now.month());
+      rv += String("-");
+      rv += String(now.day());
+      rv += String("-");
+      rv += String(now.hour());
+      rv += String("-");
+      rv += String(now.minute());
+      return rv;
     }
 };
 
@@ -244,11 +260,11 @@ class LinReg {
       Serial.println(y[nw]);
     }
 
-    bool canBeTrusted(int points) { //this method checks if there is enough data for average value to be correct  //warning: with certain points variable this may always return false because of small time for integration. See TRUSTED_AVERAGE_TIME
-      return canBeTrusted(getImin(points), getImax(points));
+    bool enoughPoints(int points) { //this method checks if there is enough data for average value to be correct  //warning: with certain points variable this may always return false because of small time for integration. See TRUSTED_AVERAGE_TIME
+      return enoughPoints(getImin(points), getImax(points));
     }
 
-    bool canBeTrusted(int imin, int imax) {
+    bool enoughPoints(int imin, int imax) {
       Serial.print(imin);
       Serial.print (" can be trusted ");
       Serial.println(imax);
@@ -265,7 +281,7 @@ class LinReg {
       }
     }
 
-    float getCoeff(int points) {  //don't forget to call canBeTrusted method before using this one. It may return nan and not bother about it
+    float getCoeff(int points) {  //don't forget to call enoughPoints method before using this one. It may return nan and not bother about it
       Serial.print("Getting coeff by points: ");
       Serial.println(points);
       if (points > MAXLEN / 2) {
@@ -333,10 +349,9 @@ float grSecToMlMin(float grSec) {
   return ans;
 }
 
-
 class ExpoAverage {
   private:
-    const float INTEGRAT_TIME = 20; //sec
+    const float INTEGRAT_TIME = 100; //sec
     float MULT = .9;
     float bank = 0.;  //or buffer or average or numerator or whatever you call it. I call it bank today
     float dummy = 0;
@@ -386,54 +401,108 @@ class ExpoAverage {
     float getAver() {
       return bank / denom;
     }
-    void reset(){
+    void reset() {
       dummy = 0;  //to avoid bad transitional effects
       firstPut = true;
     }
 };
 
 
+class SDCard {
+  private :
+    String filenam;
+    const int chipSelect = 4;
+    int lineCount = -1;
+    const int MAXLINES = 3000;
 
+  public:
+    SDCard () {
+      init();
+      filenam = "err.txt";
+    }
+    void init() {
+      Serial.print("Initializing SD card...");
+
+      // see if the card is present and can be initialized:
+      if (!SD.begin(chipSelect)) {
+        Serial.println("Card failed, or not present");
+        // don't do anything more:
+        return;
+      }
+      Serial.println("card initialized.");
+    }
+    void checkOFAndWrite(String curtime, int mass) {
+      String toWrite = curtime + " ";
+      toWrite += String(mass);
+      checkFileName(curtime);
+      write(toWrite);
+      lineCount ++;
+    }
+    void checkFileName(String curtime) {
+      if (lineCount == -1 || lineCount == MAXLINES) {
+        filenam = curtime + ".txt";
+      }
+      if (lineCount == -1) {
+        lineCount = 0;
+      }
+    }
+    void write(String toWrite) {
+      File dataFile = SD.open(filenam , FILE_WRITE);
+      // if the file is available, write to it:
+      if (dataFile) {
+        dataFile.println(toWrite);
+        dataFile.close();
+      }
+      // if the file isn't open, pop up an error:
+      else {
+        Serial.println("error opening datalog.txt");
+        digitalWrite(13, HIGH);
+      }
+    }
+};
 
 Scales *scales ; //DO NOT MOVE. Or it will not init
 Chronometer *chr;
 //LinReg *lr;
 ExpoAverage *ea;
+SDCard *sd;
 int prevMass = 0;
 long prevRecalcTime;  //msec
 long refillEnd;
 long prevMassTime;//sec
 int requiredFlow  = 0;
+long nextSDTime;
 
 
 void setup() {
   //  pinMode(LED_BUILTIN, OUTPUT);
-  
+
   setupSerial();
-  if (MASS_PUMP_ON > MASS_PUMP_OFF){  //todo: pump handling
-    while (true){
+  if (MASS_PUMP_ON > MASS_PUMP_OFF) { //todo: pump handling
+    while (true) {
       Serial.print("ASSERT FAILED. BAD MASS PUMP SETTINGS");
     }
   }
   scales = new Scales();
   scales->setupSWSerial();
-  setupRTC();
   chr = new Chronometer();
+  chr->  setupRTC();
   ea = new ExpoAverage();
   ea->init();
   //  lr = new LinReg();
   //  lr->reset();
   //  lr->dump();
+  sd = new SDCard();
   prevRecalcTime = millis();
   refillEnd = millis();
   prevMassTime = chr->curTime();
+  nextSDTime = millis() + SD_TIME_DELAY_SEC * 1000;
   Serial.println("Setup is over");
   Serial.println();
 }
 
 void loop() { // run over and over
 
-  //  for (int i = 0; i < AVER_PTS; i++) {
   int curMass = scales->waitGetReading();
   if (curMass != -1) {
     if (curMass > prevMass) {
@@ -446,22 +515,31 @@ void loop() { // run over and over
 
     }
     uint32_t curTime = chr->curTime();
-    Serial.print(curTime);
-    Serial.print(':');
-    Serial.println (curMass);
+    if (curTime > 100000) { //perhaps due to disconnect bad big time reading happens. No idea why
+      Serial.println("WARNING: BAD TIME RECEIVED. Dropping input");
+      //      continue;
+    } else {
+      Serial.print(curTime);
+      Serial.print(':');
+      Serial.println (curMass);
 
-    Serial.println("I AM PUTTING TIME AND MASS:");
-    Serial.println(curTime);
-    Serial.println(curMass);
-    if (millis() > refillEnd) {
-      ea->add(curTime - prevMassTime, prevMass - curMass);
-      //      lr->add(curTime, curMass);
+      Serial.println("I AM PUTTING TIME AND MASS:");
+      Serial.println(curTime);
+      Serial.println(curMass);
+      if (millis() > refillEnd) {
+        ea->add(curTime - prevMassTime, prevMass - curMass);
+        //      lr->add(curTime, curMass);
+      }
+      prevMass = curMass;
+      prevMassTime = curTime;
+      if (millis() > nextSDTime && millis() > refillEnd ) { //todo: refactor this to be hidden inside sd class
+        nextSDTime = millis() +  SD_TIME_DELAY_SEC * 1000;
+        sd->checkOFAndWrite(chr->curDate(), curMass);
+
+      }
     }
-    prevMass = curMass;
-    prevMassTime = curTime;
   }
   delay(10);  //DO NOT DELETE. WIthout this delay reading scales does not work. If I don't find a reason it will be reasonable to move it to the scales class. TODO, watch it
-  //  }
 
   if (Serial.available()) {
     String inputS = Serial.readString();
@@ -470,25 +548,24 @@ void loop() { // run over and over
     Serial.print("Got task flow: ");
     Serial.println(requiredFlow);
   }
-  //
-  //    int points = MAXLEN / 2;  //to average. Number of points. Not time. Ideally it should be measure in minimal acceptable error. But not yet. TODO maybe
   int points = 30;
-  //  if (millis() - prevRecalcTime > 4000 && lr->canBeTrusted(points)) { //removed commented-out section with averaging with diffeent points value. FOr certain reason adding those method calls resulted in complete mess of linear regressor work. Check git if you want to play with it
+  //  if (millis() - prevRecalcTime > 4000 && lr->enoughPoints(points)) { //removed commented-out section with averaging with diffeent points value. FOr certain reason adding those method calls resulted in complete mess of linear regressor work. Check git if you want to play with it
   if (millis() - prevRecalcTime > 10000 ) { //removed commented-out section with averaging with diffeent points value. FOr certain reason adding those method calls resulted in complete mess of linear regressor work. Check git if you want to play with it
-    //    float slow = lr->getCoeff(points );
-    Serial.print("Coeff is [ml/hour] _fast_,mid,slow:");
-    //    Serial.print(grSecToMlHr(slow), 1);
-    //    Serial.println();
+
+    Serial.print("Coeff is [ml/hour] :");
     prevRecalcTime = millis();
     float mlPerHr = grSecToMlHr(ea->getAver());
     Serial.println(mlPerHr);
     Serial.print("Trust rate: ");
     float tr = ea->getTrustRate();
     Serial.println(tr);
-    if (tr > .9) {
-      Serial.print("#");
-      Serial.println( requiredFlow / mlPerHr);
-    }
+    //UNCOMMENT THIS WHEN CONTROL IS NEEDED:
+    //    if (tr > .9) {
+    //      Serial.print("#");
+    //      Serial.println( requiredFlow / mlPerHr);
+    //      ea->reset();//WATCH IT TEST IT
+    //    }
   }
+
 }
 
