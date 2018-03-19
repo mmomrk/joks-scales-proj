@@ -6,8 +6,8 @@
 #include <SoftwareSerial.h>
 
 //The circuit:
-// * RX is digital pin 10 (connect to TX of other device)
-// * TX is digital pin 11 (connect to RX of other device)
+// * RX is digital pin 10 (connect to TX of other device) //CHANGED TO 8
+// * TX is digital pin 11 (connect to RX of other device) //CHANGED TO 9
 //uncomment this if the new line does not work
 //SoftwareSerial mySerial(10, 11, true); // RX, TX  //Do not refactor this line. DOn't know what this does and don't know how to hid it in the code
 SoftwareSerial mySerial(8, 9, true); // RX, TX  //Do not refactor this line. DOn't know what this does and don't know how to hid it in the code
@@ -18,11 +18,11 @@ RTC_DS1307 RTC;
 #define AVER_PTS  3 //used for tests
 #define MAXLEN 128  //full buffer length. This is double the number of stored points for averageing
 #define RHO 1.  //Liquid density. With good precision
-const int REFILL_DELAY_SEC = 30;  //seconds
+const int REFILL_DELAY_SEC = 30;  //30 seconds default
 const int MIN_TRUSTED_AVERAGE_TIME_SEC = 30;
 const int MASS_PUMP_ON = 1500;
 const int MASS_PUMP_OFF = 3200;
-const int SD_TIME_DELAY_SEC = 30;
+const int SD_TIME_DELAY_SEC = 10;//30 seconds ACHTUNG WARNING CHANGE TO SOMETHING MORE SANE FOR PROD
 
 
 void setupSerial(void) {
@@ -72,9 +72,9 @@ class Scales {
         prevRecTime = millis();
 
         byte input = mySerial.read();
-        Serial.print(mesLeng);
-        Serial.print(" * ");
-        Serial.println(input);  //used for debug only
+        //        Serial.print(mesLeng);
+        //        Serial.print(" * ");
+        //        Serial.println(input);  //used for debug only
         if (mesLeng == 2 || mesLeng == 7) {
           resultI = input;
           //          Serial.print("lower mass: ");
@@ -89,8 +89,8 @@ class Scales {
 
           //          Serial.print ("Got upper mass: ");
           //          Serial.println(intput);
-          Serial.print("Got mass: ");
-          Serial.println(result);
+          //          Serial.print("Got mass: ");
+          //          Serial.println(result);
         }
       }
       //      }
@@ -99,24 +99,23 @@ class Scales {
     }
 };
 
-
-String getDateTimeS(void) {
-  DateTime now = RTC.now();
-  String dateTimeString = \
-                          String(now.year(), DEC) + \
-                          String('/') + \
-                          String(now.month(), DEC) + \
-                          String('/') + \
-                          String(now.day(), DEC) + \
-                          String(' ') + \
-                          String(now.hour(), DEC) + \
-                          String(':') + \
-                          String(now.minute(), DEC) + \
-                          String(':') + \
-                          String(now.second(), DEC) + \
-                          String('\n');
-  return dateTimeString;
-}
+//String getDateTimeS(void) {
+//  DateTime now = RTC.now();
+//  String dateTimeString = \
+//                          String(now.year(), DEC) + \
+//                          String('/') + \
+//                          String(now.month(), DEC) + \
+//                          String('/') + \
+//                          String(now.day(), DEC) + \
+//                          String(' ') + \
+//                          String(now.hour(), DEC) + \
+//                          String(':') + \
+//                          String(now.minute(), DEC) + \
+//                          String(':') + \
+//                          String(now.second(), DEC) + \
+//                          String('\n');
+//  return dateTimeString;
+//}
 
 /*
    A class to get time readings from RTC that basically does the standsrd millis() but with seconds and RTC-based
@@ -149,22 +148,36 @@ class Chronometer { //DO NOT MOVE
     }
     uint32_t getSeconds(void) { //unixtime seconds
       DateTime now = RTC.now();
-      return now.unixtime();
-    }
-    String curDate() {
-      String rv = ""; //retval
-      DateTime now = RTC.now();
-      rv += String(now.year());
-      rv += String("-");
-      rv += String(now.month());
-      rv += String("-");
-      rv += String(now.day());
-      rv += String("-");
-      rv += String(now.hour());
-      rv += String("-");
-      rv += String(now.minute());
+      uint32_t rv = now.unixtime();
+      //      Serial.println(rv);
       return rv;
     }
+    //    String curDate() {
+    //      String rv; //retval
+    //      DateTime now = RTC.now();
+    //      //      Serial.print(now.year(), DEC);
+    //      //      Serial.print('/');
+    //      //      Serial.print(now.month(), DEC);
+    //      //      Serial.print('/');
+    //      //      Serial.print(now.day(), DEC);
+    //      //      Serial.print(' ');
+    //      //      Serial.print(now.hour(), DEC);
+    //      //      Serial.print(':');
+    //      //      Serial.print(now.minute(), DEC);
+    //      //      Serial.print(':');
+    //      //      Serial.print(now.second(), DEC);
+    //      //      Serial.println();
+    //
+    //      String syear = String(now.year(), DEC);
+    //      String smonth = String(now.month(), DEC);
+    //      String sday = String(now.day(), DEC);
+    //      String shour = String(now.hour(), DEC);
+    //      String sminute = String(now.minute(), DEC);
+    //      String ssecond = String(now.second(), DEC);
+    //      rv = String(syear + "-" + smonth + "-" + sday + "-" + shour + "-" + sminute + "-" + ssecond);
+    //      Serial.println(rv);
+    //      return rv;
+    //    }
 };
 
 
@@ -361,8 +374,8 @@ class ExpoAverage {
     bool firstPut = true;
     void init() {
       MULT = exp(-4. / INTEGRAT_TIME);
-      Serial.print("MULT IS ");
-      Serial.println(MULT);
+      //      Serial.print("MULT IS ");
+      //      Serial.println(MULT);
       float sum = 0;
       float prevSum = -1;
       while (sum != prevSum) {
@@ -375,7 +388,7 @@ class ExpoAverage {
     }
     void add(int dt, int dm) {
       if (dt == 0) {
-        Serial.println("Insertion rejected");
+        //        Serial.println("Insertion rejected");
         return;
       } else {
         Serial.print(dt);
@@ -389,9 +402,9 @@ class ExpoAverage {
         } else {  //for the rest of our lives
           dummy = dummy * MULT + 1;
           bank = bank * MULT + dmbydt;
-          Serial.print (bank);
-          Serial.print(" BANK and DENOM ");
-          Serial.println(denom);
+          //          Serial.print (bank);
+          //          Serial.print(" BANK and DENOM ");
+          //          Serial.println(denom);
         }
       }
     }
@@ -421,31 +434,48 @@ class SDCard {
       filenam = "err.txt";
     }
     void init() {
-      Serial.print("Initializing SD card...");
+      Serial.print("Ini SD");
 
       // see if the card is present and can be initialized:
       if (!SD.begin(chipSelect)) {
-        Serial.println("Card failed, or not present");
+        Serial.println("Card failed");
         // don't do anything more:
         return;
       }
       Serial.println("card initialized.");
     }
-    void checkOFAndWrite(String curtime, int mass) {
-      String toWrite = curtime + " ";
-      toWrite += String(mass);
-      checkFileName(curtime);
-      write(toWrite);
-      lineCount ++;
-    }
-    void checkFileName(String curtime) {
-      if (lineCount == -1 || lineCount == MAXLINES) {
-        filenam = curtime + ".txt";
+    void checkOFAndWrite(String seconds, int mass) {
+      Serial.println("Check and write " );
+      Serial.println(seconds);
+      Serial.println(mass);
+
+      String toWrite = seconds + " " + String(mass);
+      Serial.println(toWrite);
+      //      Serial.println(seconds);
+      Serial.println(filenam );
+
+      if ((lineCount == -1 || lineCount == MAXLINES || filenam == "" || filenam == ".txt") && seconds != "") {
+        filenam = seconds.substring(2) + ".txt";
+        Serial.println(filenam);
       }
       if (lineCount == -1) {
         lineCount = 0;
       }
+      //      checkFileName(seconds);
+      write(toWrite);
+      lineCount ++;
     }
+    //    void checkFileName(String seconds) {
+    //      Serial.println(seconds);
+    //      Serial.println(filenam == "");
+    //      if (lineCount == -1 || lineCount == MAXLINES || filenam == "") {
+    //        filenam = seconds + ".txt";
+    //        Serial.println(filenam);
+    //      }
+    //      if (lineCount == -1) {
+    //        lineCount = 0;
+    //      }
+    //    }
     void write(String toWrite) {
       File dataFile = SD.open(filenam , FILE_WRITE);
       // if the file is available, write to it:
@@ -455,8 +485,8 @@ class SDCard {
       }
       // if the file isn't open, pop up an error:
       else {
-        Serial.println("error opening datalog.txt");
-        digitalWrite(13, HIGH);
+        Serial.println("ERROR opening " + filenam);
+        //        digitalWrite(13, HIGH);
       }
     }
 };
@@ -523,9 +553,6 @@ void loop() { // run over and over
       Serial.print(':');
       Serial.println (curMass);
 
-      Serial.println("I AM PUTTING TIME AND MASS:");
-      Serial.println(curTime);
-      Serial.println(curMass);
       if (millis() > refillEnd) {
         ea->add(curTime - prevMassTime, prevMass - curMass);
         //      lr->add(curTime, curMass);
@@ -535,10 +562,13 @@ void loop() { // run over and over
       if (millis() > nextSDTime && millis() > refillEnd ) { //todo: refactor this to be hidden inside sd class
         Serial.println("printing to sd");
         nextSDTime = millis() +  SD_TIME_DELAY_SEC * 1000;
-        sd->checkOFAndWrite(chr->curDate(), curMass);
+        //        sd->checkOFAndWrite(String (chr->getSeconds()), chr->curDate(), curMass);
+        uint32_t secs = chr->getSeconds();
+        String secsS = String (secs);
+        sd->checkOFAndWrite(secsS, curMass);
 
-      } else{
-        Serial.println("waiting for sd");
+      } else {
+        //        Serial.println("waiting for sd");
       }
     }
   }
@@ -551,24 +581,27 @@ void loop() { // run over and over
     Serial.print("Got task flow: ");
     Serial.println(requiredFlow);
   }
-  int points = 30;
+  /**
+      this block is needed for realtime flow control. Commented out for soujas sd card logger to save space because micro is glitching heavily
+  */
+  //  int points = 30;
   //  if (millis() - prevRecalcTime > 4000 && lr->enoughPoints(points)) { //removed commented-out section with averaging with diffeent points value. FOr certain reason adding those method calls resulted in complete mess of linear regressor work. Check git if you want to play with it
-  if (millis() - prevRecalcTime > 10000 ) { //removed commented-out section with averaging with diffeent points value. FOr certain reason adding those method calls resulted in complete mess of linear regressor work. Check git if you want to play with it
-
-    Serial.print("Coeff is [ml/hour] :");
-    prevRecalcTime = millis();
-    float mlPerHr = grSecToMlHr(ea->getAver());
-    Serial.println(mlPerHr);
-    Serial.print("Trust rate: ");
-    float tr = ea->getTrustRate();
-    Serial.println(tr);
-    //UNCOMMENT THIS WHEN CONTROL IS NEEDED:
-    //    if (tr > .9) {
-    //      Serial.print("#");
-    //      Serial.println( requiredFlow / mlPerHr);
-    //      ea->reset();//WATCH IT TEST IT
-    //    }
-  }
+  //  if (millis() - prevRecalcTime > 10000 ) { //removed commented-out section with averaging with diffeent points value. FOr certain reason adding those method calls resulted in complete mess of linear regressor work. Check git if you want to play with it
+  //
+  //    Serial.print("Coeff is [ml/hour] :");
+  //    prevRecalcTime = millis();
+  //    float mlPerHr = grSecToMlHr(ea->getAver());
+  //    Serial.println(mlPerHr);
+  //    Serial.print("Trust rate: ");
+  //    float tr = ea->getTrustRate();
+  //    Serial.println(tr);
+  //    //UNCOMMENT THIS WHEN CONTROL IS NEEDED:
+  //    //    if (tr > .9) {
+  //    //      Serial.print("#");
+  //    //      Serial.println( requiredFlow / mlPerHr);
+  //    //      ea->reset();//WATCH IT TEST IT
+  //    //    }
+  //  }
 
 }
 
