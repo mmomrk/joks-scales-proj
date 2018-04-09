@@ -1,14 +1,37 @@
-#include <SD.h>
-
+//#include <SD.h> //search #SDCARD for blocks related
 #include <RTClib.h>
 #include <math.h>
 #include <Wire.h>
 #include <SoftwareSerial.h>
 
-//The circuit:
-// * RX is digital pin 10 (connect to TX of other device) //CHANGED TO 8
-// * TX is digital pin 11 (connect to RX of other device) //CHANGED TO 9
-//uncomment this if the new line does not work
+//Since this code is to be used for several tasks and I cannot compile bloat and push it to ardy MC completely AND I am noob enough to implement it via automated code generation
+//neither I am familiar with git submodules nor other stuff that could POTENTIALLY help me, some of the parts are to be commented out or in.
+// Use hashtags for the purposes:
+// #FLOWCALC, #SDCARD, #CONTROL
+
+//======================= The circuit =======================
+// ==SoftwareSerial:
+// * RX is digital pin 10(not) (connect to TX of other device) //CHANGED TO 8
+// * TX is digital pin 11(not) (connect to RX of other device) //CHANGED TO 9
+// ==DB9 plug<->ardy board:
+//5<->GND
+//2<->D9
+//3<->D8
+// ==RTC<->ardy board:
+//GND<->GND
+//VCC<->Vin
+//SDA<->A4
+//SCL<->A5
+// ==SD cardreader<->ardy board:
+//GND<->GND
+//VCC<->5V
+//MISO<->D12
+//MOSI<->D11
+//SCK<->D13
+//CS<->D4
+//======================= Endof Circuit =======================
+
+//uncomment this if the next line does not work:
 //SoftwareSerial mySerial(10, 11, true); // RX, TX  //Do not refactor this line. DOn't know what this does and don't know how to hid it in the code
 SoftwareSerial mySerial(8, 9, true); // RX, TX  //Do not refactor this line. DOn't know what this does and don't know how to hid it in the code
 RTC_DS1307 RTC;
@@ -22,7 +45,7 @@ const int REFILL_DELAY_SEC = 30;  //30 seconds default
 const int MIN_TRUSTED_AVERAGE_TIME_SEC = 30;
 const int MASS_PUMP_ON = 1500;
 const int MASS_PUMP_OFF = 3200;
-const int SD_TIME_DELAY_SEC = 10;//30 seconds ACHTUNG WARNING CHANGE TO SOMETHING MORE SANE FOR PROD
+//const int SD_TIME_DELAY_SEC = 30;//30 seconds ACHTUNG WARNING CHANGE TO SOMETHING MORE SANE FOR PROD #SDCARD
 
 
 void setupSerial(void) {
@@ -35,7 +58,6 @@ void setupSerial(void) {
 
 class Scales {
   private:
-
     long prevRecTime = 0;
     int resultI = -1; //this is the variable where actual mass is stored during two passes of the method
     byte mesLeng = 0; //todo:rename
@@ -45,8 +67,6 @@ class Scales {
       mySerial.begin(4800);
     }
     int waitGetReading() {
-
-
       int result = -1;  //intermediate result that is return value
       //      Serial.println("Reading scales");
       //      long callTime = millis();
@@ -56,7 +76,6 @@ class Scales {
         //        delay(10000);
         byte command = 74;
         mySerial.write(command);
-
       }
       if (mySerial.available()) {
 
@@ -65,7 +84,6 @@ class Scales {
           //            Serial.println(mesLeng);  //I will not delete this line. It was used to confirm that datasheet is wrong and message length is variable. Brilliant, devs!
           mesLeng = 0;
           resultI = -1;
-
         } else {
           mesLeng++;
         }
@@ -94,28 +112,9 @@ class Scales {
         }
       }
       //      }
-
       return (result);
     }
 };
-
-//String getDateTimeS(void) {
-//  DateTime now = RTC.now();
-//  String dateTimeString = \
-//                          String(now.year(), DEC) + \
-//                          String('/') + \
-//                          String(now.month(), DEC) + \
-//                          String('/') + \
-//                          String(now.day(), DEC) + \
-//                          String(' ') + \
-//                          String(now.hour(), DEC) + \
-//                          String(':') + \
-//                          String(now.minute(), DEC) + \
-//                          String(':') + \
-//                          String(now.second(), DEC) + \
-//                          String('\n');
-//  return dateTimeString;
-//}
 
 /*
    A class to get time readings from RTC that basically does the standsrd millis() but with seconds and RTC-based
@@ -180,7 +179,7 @@ class Chronometer { //DO NOT MOVE
     //    }
 };
 
-
+//Class is obsolete because low memory bugs and migration to exponential average
 class LinReg {
   private:
     //    int maxLen = 128; #defined
@@ -362,6 +361,7 @@ float grSecToMlMin(float grSec) {
   return ans;
 }
 
+//#FLOWCALC
 class ExpoAverage {
   private:
     const float INTEGRAT_TIME = 100; //sec
@@ -419,9 +419,11 @@ class ExpoAverage {
       firstPut = true;
     }
 };
+//ENDOF #FLOWCALC
 
-
-class SDCard {
+/*
+  //#SDCARD
+  class SDCard {
   private :
     String filenam;
     const int chipSelect = 4;
@@ -489,13 +491,15 @@ class SDCard {
         //        digitalWrite(13, HIGH);
       }
     }
-};
+  };
+  //#SDCARD endof class
+*/
 
 Scales *scales ; //DO NOT MOVE. Or it will not init
 Chronometer *chr;
 //LinReg *lr;
 ExpoAverage *ea;
-SDCard *sd;
+//SDCard *sd; //#SDCARD
 int prevMass = 0;
 long prevRecalcTime;  //msec
 long refillEnd;
@@ -522,11 +526,14 @@ void setup() {
   //  lr = new LinReg();
   //  lr->reset();
   //  lr->dump();
-  sd = new SDCard();
+
+  //  sd = new SDCard();  //#SDCARD
+  //  nextSDTime = millis() + SD_TIME_DELAY_SEC * 1000; //#SDCARD
+
   prevRecalcTime = millis();
   refillEnd = millis();
   prevMassTime = chr->curTime();
-  nextSDTime = millis() + SD_TIME_DELAY_SEC * 1000;
+
   Serial.println("Setup is over");
   Serial.println();
 }
@@ -559,17 +566,21 @@ void loop() { // run over and over
       }
       prevMass = curMass;
       prevMassTime = curTime;
-      if (millis() > nextSDTime && millis() > refillEnd ) { //todo: refactor this to be hidden inside sd class
-        Serial.println("printing to sd");
-        nextSDTime = millis() +  SD_TIME_DELAY_SEC * 1000;
-        //        sd->checkOFAndWrite(String (chr->getSeconds()), chr->curDate(), curMass);
-        uint32_t secs = chr->getSeconds();
-        String secsS = String (secs);
-        sd->checkOFAndWrite(secsS, curMass);
-
-      } else {
-        //        Serial.println("waiting for sd");
-      }
+      /*
+        //      // #SDCARD
+        //      if (millis() > nextSDTime && millis() > refillEnd ) { //todo: refactor this to be hidden inside sd class
+        //        Serial.println("printing to sd");
+        //        nextSDTime = millis() +  SD_TIME_DELAY_SEC * 1000;
+        //        //        sd->checkOFAndWrite(String (chr->getSeconds()), chr->curDate(), curMass);
+        //        uint32_t secs = chr->getSeconds();
+        //        String secsS = String (secs);
+        //        sd->checkOFAndWrite(secsS, curMass);
+        //
+        //      } else {
+        //        //        Serial.println("waiting for sd");
+        //      }
+        //ENDOF #SDCARD block
+      */
     }
   }
   delay(10);  //DO NOT DELETE. WIthout this delay reading scales does not work. If I don't find a reason it will be reasonable to move it to the scales class. TODO, watch it
@@ -582,26 +593,25 @@ void loop() { // run over and over
     Serial.println(requiredFlow);
   }
   /**
-      this block is needed for realtime flow control. Commented out for soujas sd card logger to save space because micro is glitching heavily
+    this block is needed for realtime flow control. Commented out for soujas sd card logger to save space because MC is glitching heavily
   */
-  //  int points = 30;
+  //#FLOWCALC
+  int points = 30;
   //  if (millis() - prevRecalcTime > 4000 && lr->enoughPoints(points)) { //removed commented-out section with averaging with diffeent points value. FOr certain reason adding those method calls resulted in complete mess of linear regressor work. Check git if you want to play with it
-  //  if (millis() - prevRecalcTime > 10000 ) { //removed commented-out section with averaging with diffeent points value. FOr certain reason adding those method calls resulted in complete mess of linear regressor work. Check git if you want to play with it
-  //
-  //    Serial.print("Coeff is [ml/hour] :");
-  //    prevRecalcTime = millis();
-  //    float mlPerHr = grSecToMlHr(ea->getAver());
-  //    Serial.println(mlPerHr);
-  //    Serial.print("Trust rate: ");
-  //    float tr = ea->getTrustRate();
-  //    Serial.println(tr);
-  //    //UNCOMMENT THIS WHEN CONTROL IS NEEDED:
-  //    //    if (tr > .9) {
-  //    //      Serial.print("#");
-  //    //      Serial.println( requiredFlow / mlPerHr);
-  //    //      ea->reset();//WATCH IT TEST IT
-  //    //    }
-  //  }
+  if (millis() - prevRecalcTime > 10000 ) { //removed commented-out section with averaging with diffeent points value. FOr certain reason adding those method calls resulted in complete mess of linear regressor work. Check git if you want to play with it
 
+    Serial.print("Coeff is [ml/hour] :");
+    prevRecalcTime = millis();
+    float mlPerHr = grSecToMlHr(ea->getAver());
+    Serial.println(mlPerHr);
+    Serial.print("Trust rate: ");
+    float tr = ea->getTrustRate();
+    Serial.println(tr);
+    //UNCOMMENT THIS WHEN #CONTROL IS NEEDED:
+    //    if (tr > .9) {
+    //      Serial.print("#");
+    //      Serial.println( requiredFlow / mlPerHr);
+    //      ea->reset();//WATCH IT TEST IT
+    //    }
+  }
 }
-
