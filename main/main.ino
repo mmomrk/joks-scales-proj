@@ -11,8 +11,9 @@
 
 //======================= The circuit =======================
 // == SoftwareSerial:
-// * RX is digital pin 10(not) (connect to TX of other device) //CHANGED TO 8
-// * TX is digital pin 11(not) (connect to RX of other device) //CHANGED TO 9
+// >>>>>>> ACHTUNG: Pinout depends on cable. This pinout is for CONNFLY cable which has rx-tx crossed. Normal cables would not do it <<<<<<
+// * RX is digital pin 10(CHANGED TO 8) (connect to TX of other device) 
+// * TX is digital pin 11(CHANGED TO 9) (connect to RX of other device)
 // == DB9 plug <-> ardy board:
 //5<->GND
 //2<->D9
@@ -67,6 +68,7 @@ class Scales {
     long prevRecTime = 0;
     int resultI = -1; //this is the variable where actual mass is stored during two passes of the method
     byte mesLeng = 0; //todo:rename
+    bool sentRequest=false;
   public:
     void setupSWSerial() {
       // set the data rate for the SoftwareSerial port
@@ -82,6 +84,7 @@ class Scales {
         //        delay(10000);
         byte command = 74;
         mySerial.write(command);
+        sentRequest=true;
       }
       if (mySerial.available()) {
 
@@ -116,9 +119,10 @@ class Scales {
           //          Serial.print("Got mass: ");
           //          Serial.println(result);
         }
-      } else {
+      } else if (sentRequest) {
         Serial.println("ERROR: NO SCALES RESPONCE");
       }
+      sentRequest=false;
       //      }
       return (result);
     }
@@ -602,7 +606,7 @@ void loop() { // run over and over
       */
     }
   }
-  delay(10);  //DO NOT DELETE. WIthout this delay reading scales does not work. If I don't find a reason it will be reasonable to move it to the scales class. TODO, watch it
+  delay(100);  //DO NOT DELETE. WIthout this delay reading scales does not work. If I don't find a reason it will be reasonable to move it to the scales class. TODO, watch it
 
   if (Serial.available()) {
     String inputS = Serial.readString();
