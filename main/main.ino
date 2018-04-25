@@ -12,24 +12,24 @@
 //======================= The circuit =======================
 // == SoftwareSerial:
 // >>>>>>> ACHTUNG: Pinout depends on cable. This pinout is for CONNFLY cable which has rx-tx crossed. Normal cables would not do it <<<<<<
-// * RX is digital pin 10(CHANGED TO 8) (connect to TX of other device) 
+// * RX is digital pin 10(CHANGED TO 8) (connect to TX of other device)
 // * TX is digital pin 11(CHANGED TO 9) (connect to RX of other device)
 // == DB9 plug <-> ardy board:
-//5<->GND
-//2<->D9
-//3<->D8
+//5 <-> GND
+//2 <-> D9
+//3 <-> D8
 // == RTC <-> ardy board:
-//GND<->GND
-//VCC<->Vin
-//SDA<->A4
-//SCL<->A5
+//GND <-> GND
+//VCC <-> Vin
+//SDA <-> A4
+//SCL <-> A5
 // == SD cardreader <-> ardy board:
-//GND<->GND
-//VCC<->5V
-//MISO<->D12
-//MOSI<->D11
-//SCK<->D13
-//CS<->D4
+//GND  <-> GND
+//VCC  <-> 5V
+//MISO <-> D12
+//MOSI <-> D11
+//SCK  <-> D13
+//CS   <-> D4
 //== LongerPump <-> ardy ( http://www.longerpump.com/index.php/OtherTechnicalArticles/show/152.html )
 //1 <-> +5V* (speed control; 3.3V for slow debug)
 //2 <-> D7 (?on-off switch. Does not work when to +5V?)
@@ -47,6 +47,7 @@ RTC_DS1307 RTC;
 #define AVER_PTS  3 //used for tests
 #define MAXLEN 128  //full buffer length. This is double the number of stored points for averageing
 #define RHO 1.  //Liquid density. With good precision
+#define PIN_PUMP 7
 const int REFILL_DELAY_SEC = 30;  //30 seconds default
 const int MIN_TRUSTED_AVERAGE_TIME_SEC = 30;
 
@@ -68,7 +69,7 @@ class Scales {
     long prevRecTime = 0;
     int resultI = -1; //this is the variable where actual mass is stored during two passes of the method
     byte mesLeng = 0; //todo:rename
-    bool sentRequest=false;
+    bool sentRequest = false;
   public:
     void setupSWSerial() {
       // set the data rate for the SoftwareSerial port
@@ -84,7 +85,7 @@ class Scales {
         //        delay(10000);
         byte command = 74;
         mySerial.write(command);
-        sentRequest=true;
+        sentRequest = true;
       }
       if (mySerial.available()) {
 
@@ -122,7 +123,7 @@ class Scales {
       } else if (sentRequest) {
         Serial.println("ERROR: NO SCALES RESPONCE");
       }
-      sentRequest=false;
+      sentRequest = false;
       //      }
       return (result);
     }
@@ -499,10 +500,12 @@ class ExpoAverage {
 
 //#PUMP  TODO: add timer condition to poweroff the pump. Perhaps Class wrap would do good here too.
 void pumpOn() {
-  Serial.println("THIS IS A PUMPON STUB. FIX IT!!");
+  Serial.println("Pump on");
+  digitalWrite(PIN_PUMP, LOW);
 }
 void pumpOff() {
-  Serial.println("THIS IS A PUMPOFF STUB. FIX IT!!");
+  Serial.println("Pump off");
+  digitalWrite(PIN_PUMP, HIGH);
 }
 
 void pumpControl(int currentMass) {
@@ -533,19 +536,20 @@ long nextSDTime;
 
 void setup() {
   //  pinMode(LED_BUILTIN, OUTPUT);
-
   setupSerial();
   if (MASS_PUMP_ON > MASS_PUMP_OFF) { //todo: pump handling
     while (true) {
       Serial.print("ASSERT FAILED. BAD MASS PUMP SETTINGS");
     }
   }
+  pinMode(PIN_PUMP, OUTPUT); //#PUMP
+  digitalWrite(PIN_PUMP, HIGH); //#PUMP //TODO: make pin assign
   scales = new Scales();
   scales->setupSWSerial();
   chr = new Chronometer();
   chr->setupRTC();
   ea = new ExpoAverage();
-  ea->init();
+  ea->init(); //todo make expoaverage calculate multiplier dependent on needed time constant and whatever else if it has not been done already
   //  lr = new LinReg();
   //  lr->reset();
   //  lr->dump();
