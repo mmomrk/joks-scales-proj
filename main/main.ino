@@ -7,28 +7,33 @@
 //Since this code is to be used for several tasks and I cannot compile bloat and push it to ardy MC completely AND I am noob enough to implement it via automated code generation
 //neither I am familiar with git submodules nor other stuff that could POTENTIALLY help me, some of the parts are to be commented out or in.
 // Use hashtags for the purposes:
-// #FLOWCALC, #SDCARD, #CONTROL
+// #FLOWCALC, #SDCARD, #CONTROL, #PUMP
 
 //======================= The circuit =======================
-// ==SoftwareSerial:
+// == SoftwareSerial:
 // * RX is digital pin 10(not) (connect to TX of other device) //CHANGED TO 8
 // * TX is digital pin 11(not) (connect to RX of other device) //CHANGED TO 9
-// ==DB9 plug<->ardy board:
+// == DB9 plug <-> ardy board:
 //5<->GND
 //2<->D9
 //3<->D8
-// ==RTC<->ardy board:
+// == RTC <-> ardy board:
 //GND<->GND
 //VCC<->Vin
 //SDA<->A4
 //SCL<->A5
-// ==SD cardreader<->ardy board:
+// == SD cardreader <-> ardy board:
 //GND<->GND
 //VCC<->5V
 //MISO<->D12
 //MOSI<->D11
 //SCK<->D13
 //CS<->D4
+//== LongerPump <-> ardy ( http://www.longerpump.com/index.php/OtherTechnicalArticles/show/152.html )
+//1 <-> +5V* (speed control; 3.3V for slow debug)
+//2 <-> D7 (?on-off switch. Does not work when to +5V?)
+//4 <-> GND
+//5 <-> GND
 //======================= Endof Circuit =======================
 
 //uncomment this if the next line does not work:
@@ -43,8 +48,9 @@ RTC_DS1307 RTC;
 #define RHO 1.  //Liquid density. With good precision
 const int REFILL_DELAY_SEC = 30;  //30 seconds default
 const int MIN_TRUSTED_AVERAGE_TIME_SEC = 30;
-const int MASS_PUMP_ON = 1500;
-const int MASS_PUMP_OFF = 3200;
+
+const int MASS_PUMP_ON = 1500; //#PUMP
+const int MASS_PUMP_OFF = 3200; //#PUMP
 //const int SD_TIME_DELAY_SEC = 30;//30 seconds ACHTUNG WARNING CHANGE TO SOMETHING MORE SANE FOR PROD #SDCARD
 
 
@@ -90,9 +96,9 @@ class Scales {
         prevRecTime = millis();
 
         byte input = mySerial.read();
-        //        Serial.print(mesLeng);
-        //        Serial.print(" * ");
-        //        Serial.println(input);  //used for debug only
+        Serial.print(mesLeng);
+        Serial.print(" * ");
+        Serial.println(input);  //used for debug only
         if (mesLeng == 2 || mesLeng == 7) {
           resultI = input;
           //          Serial.print("lower mass: ");
@@ -110,6 +116,8 @@ class Scales {
           //          Serial.print("Got mass: ");
           //          Serial.println(result);
         }
+      } else {
+        Serial.println("ERROR: NO SCALES RESPONCE");
       }
       //      }
       return (result);
@@ -341,16 +349,6 @@ class LinReg {
     }
 };
 
-//void refillDelay() {  //not good. blocking. Makes scales class return stupid things that cause more delay. Stupid
-//  Serial.print("Refill detected. Waiting ");
-//  Serial.print(REFILL_DELAY);
-//  Serial.println(" seconds before resuming operation");
-//  for (int i = REFILL_DELAY; i > 0; i--) {
-//    Serial.println(i - 1); //to pass a satisfying 0 seconds in the end
-//    delay(1000);
-//  }
-//}
-
 float grSecToMlHr(float grSec) {
   float ans = grSecToMlMin(grSec) * 60;
   return ans;
@@ -495,6 +493,27 @@ class ExpoAverage {
   //#SDCARD endof class
 */
 
+//#PUMP  TODO: add timer condition to poweroff the pump. Perhaps Class wrap would do good here too.
+void pumpOn() {
+  Serial.println("THIS IS A PUMPON STUB. FIX IT!!");
+}
+void pumpOff() {
+  Serial.println("THIS IS A PUMPOFF STUB. FIX IT!!");
+}
+
+void pumpControl(int currentMass) {
+  if (currentMass < 0) {
+    return ;
+  }
+  if (currentMass < MASS_PUMP_ON) {
+    pumpOn();
+  }
+  if (currentMass > MASS_PUMP_OFF) {  //TODO add panic button or something like that
+    pumpOff();
+  }
+}
+//ENDOF #PUMP
+
 Scales *scales ; //DO NOT MOVE. Or it will not init
 Chronometer *chr;
 //LinReg *lr;
@@ -520,7 +539,7 @@ void setup() {
   scales = new Scales();
   scales->setupSWSerial();
   chr = new Chronometer();
-  chr->  setupRTC();
+  chr->setupRTC();
   ea = new ExpoAverage();
   ea->init();
   //  lr = new LinReg();
@@ -548,7 +567,7 @@ void loop() { // run over and over
       chr->reset();
       ea->reset();
       //      lr->reset();
-      refillEnd = millis() + REFILL_DELAY_SEC * 1000;
+      refillEnd = millis() + REFILL_DELAY_SEC * 1000; //WATCH IT TODO REFACTOR TO INCLUDE PUMPONFLAG #PUMP
     }
 
     uint32_t curTime = chr->curTime();
@@ -560,7 +579,7 @@ void loop() { // run over and over
       Serial.print(':');
       Serial.println (curMass);
 
-      if (millis() > refillEnd) {
+      if (millis() > refillEnd) { //WATCH IT TODO REFACTOR TO INCLUDE PUMPONFLAG #PUMP
         ea->add(curTime - prevMassTime, prevMass - curMass);
         //      lr->add(curTime, curMass);
       }
@@ -614,4 +633,5 @@ void loop() { // run over and over
     //      ea->reset();//WATCH IT TEST IT
     //    }
   }
+  pumpControl(curMass); //#PUMP
 }
