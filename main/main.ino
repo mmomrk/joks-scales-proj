@@ -14,40 +14,42 @@
 // >>>>>>> ACHTUNG: Pinout depends on cable. This pinout is for CONNFLY cable which has rx-tx crossed. Normal cables would not do it <<<<<<
 // * RX is digital pin 10(CHANGED TO 8) (connect to TX of other device)
 // * TX is digital pin 11(CHANGED TO 9) (connect to RX of other device)
+// By the time this comment is written the setup works with this:
+// pin8 - orange
+// pin9 - red
 // == DB9 plug <-> ardy board:
-//5 <-> GND
-//2 <-> D9
-//3 <-> D8
+// 5 <-> GND
+// 2 <-> D9
+// 3 <-> D8
 // == RTC <-> ardy board:
-//GND <-> GND
-//VCC <-> Vin
-//SDA <-> A4
-//SCL <-> A5
+// GND <-> GND
+// VCC <-> Vin
+// SDA <-> A4
+// SCL <-> A5
 // == SD cardreader <-> ardy board:
-//GND  <-> GND
-//VCC  <-> 5V
-//MISO <-> D12
-//MOSI <-> D11
-//SCK  <-> D13
-//CS   <-> D4
-//== LongerPump <-> ardy ( http://www.longerpump.com/index.php/OtherTechnicalArticles/show/152.html )
-//1 <-> +5V* (speed control; 3.3V for slow debug)
-//2 <-> D7 (?on-off switch. Does not work when to +5V?)
-//4 <-> GND
-//5 <-> GND
+// GND  <-> GND
+// VCC  <-> 5V
+// MISO <-> D12
+// MOSI <-> D11
+// SCK  <-> D13
+// CS   <-> D4
+// == LongerPump <-> ardy ( http://www.longerpump.com/index.php/OtherTechnicalArticles/show/152.html )
+// 1 <-> +5V* (speed control; 3.3V for slow debug)
+// 2 <-> D7 (?on-off switch. Does not work when to +5V?)
+// 4 <-> GND
+// 5 <-> GND
 //======================= Endof Circuit =======================
 
-//uncomment this if the next line does not work:
-//SoftwareSerial mySerial(10, 11, true); // RX, TX  //Do not refactor this line. DOn't know what this does and don't know how to hid it in the code
+
 SoftwareSerial mySerial(8, 9, true); // RX, TX  //Do not refactor this line. DOn't know what this does and don't know how to hid it in the code
 RTC_DS1307 RTC;
 
 
-#define SCALES_POLL_PERIOD  4
-#define AVER_PTS  3 //used for tests
-#define MAXLEN 128  //full buffer length. This is double the number of stored points for averageing
+#define SCALES_POLL_PERIOD  5 //sec
+#define AVER_PTS  3 //used for tests  //probably obsolete. Watch it, refactor candidate
+#define MAXLEN 128  //full buffer length. This is double the number of stored points for averageing //probably obsolete. Watch it, refactor candidate
 #define RHO 1.  //Liquid density. With good precision
-#define PIN_PUMP 7
+#define PIN_PUMP 7  //0v for ON state, +5v for OFF state
 const int REFILL_DELAY_SEC = 30;  //30 seconds default
 const int MIN_TRUSTED_AVERAGE_TIME_SEC = 30;
 
@@ -69,7 +71,7 @@ class Scales {
     long prevRecTime = 0;
     int resultI = -1; //this is the variable where actual mass is stored during two passes of the method
     byte mesLeng = 0; //todo:rename
-    bool sentRequest = false;
+    int sentRequest = 0;
   public:
     void setupSWSerial() {
       // set the data rate for the SoftwareSerial port
@@ -85,7 +87,7 @@ class Scales {
         //        delay(10000);
         byte command = 74;
         mySerial.write(command);
-        sentRequest = true;
+        sentRequest = 1;
       }
       if (mySerial.available()) {
 
@@ -100,9 +102,9 @@ class Scales {
         prevRecTime = millis();
 
         byte input = mySerial.read();
-        Serial.print(mesLeng);
-        Serial.print(" * ");
-        Serial.println(input);  //used for debug only
+        //        Serial.print(mesLeng);
+        //        Serial.print(" * ");
+        //        Serial.println(input);  //used for debug only
         if (mesLeng == 2 || mesLeng == 7) {
           resultI = input;
           //          Serial.print("lower mass: ");
@@ -120,8 +122,12 @@ class Scales {
           //          Serial.print("Got mass: ");
           //          Serial.println(result);
         }
-      } else if (sentRequest) {
-        Serial.println("ERROR: NO SCALES RESPONCE");
+      } else if (sentRequest > 0) {
+        if (sentRequest > 1) {  //perhaps looping is too fast for serial to react. Yet it always outputs one error message before receiving the data
+          Serial.println("ERROR: NO SCALES RESPONCE");
+        } else {
+          sentRequest++;
+        }
       }
       sentRequest = false;
       //      }
@@ -164,194 +170,6 @@ class Chronometer { //DO NOT MOVE
       //      Serial.println(rv);
       return rv;
     }
-    //    String curDate() {
-    //      String rv; //retval
-    //      DateTime now = RTC.now();
-    //      //      Serial.print(now.year(), DEC);
-    //      //      Serial.print('/');
-    //      //      Serial.print(now.month(), DEC);
-    //      //      Serial.print('/');
-    //      //      Serial.print(now.day(), DEC);
-    //      //      Serial.print(' ');
-    //      //      Serial.print(now.hour(), DEC);
-    //      //      Serial.print(':');
-    //      //      Serial.print(now.minute(), DEC);
-    //      //      Serial.print(':');
-    //      //      Serial.print(now.second(), DEC);
-    //      //      Serial.println();
-    //
-    //      String syear = String(now.year(), DEC);
-    //      String smonth = String(now.month(), DEC);
-    //      String sday = String(now.day(), DEC);
-    //      String shour = String(now.hour(), DEC);
-    //      String sminute = String(now.minute(), DEC);
-    //      String ssecond = String(now.second(), DEC);
-    //      rv = String(syear + "-" + smonth + "-" + sday + "-" + shour + "-" + sminute + "-" + ssecond);
-    //      Serial.println(rv);
-    //      return rv;
-    //    }
-};
-
-//Class is obsolete because low memory bugs and migration to exponential average
-class LinReg {
-  private:
-    //    int maxLen = 128; #defined
-    int n;
-    float x[MAXLEN], y[MAXLEN];
-
-    int getImax(int points) { //todo refactor
-      // calculations required for linear regression
-      int imin = 0;
-      int imax = n;
-      //      if (n > points) { //or is it >=? todo think
-      //        imin = imax - points;
-      //      }
-      if (n > MAXLEN / 2) {
-        int nw = n % (MAXLEN / 2);
-        imax = nw + MAXLEN / 2;
-      }
-      return (imax);
-    }
-
-    int getImin(int points ) { //todo refactor
-      // calculations required for linear regression
-      int imin = getImax(points) - points;
-      if (imin < 0) {
-        imin = 0;
-      }
-      return (imin);
-    }
-  public:
-    LinReg() {
-      //      reset();
-      //      Serial.println("LR RESET DONE");
-      //      dump();
-    }
-
-    void dump(int from, int to) {
-      Serial.print("dumping from ");
-      Serial.print(from);
-      Serial.print(" to ");
-      Serial.println(to);
-      for (int i = from; i < to; i++) {
-        Serial.print(x[i], 0.);
-        Serial.print(" - ");
-        Serial.print(y[i], 0.);
-        Serial.println('\t');
-      }
-    }
-    void dump() {
-      Serial.println("DUMP CURRENT n");
-      Serial.println(n);
-
-      int nw = n % (MAXLEN / 2);
-      int imin = 0;
-      int imax = n;
-      if (n > MAXLEN / 2) {
-        imax = nw + MAXLEN / 2;
-        imin = nw + 1;
-      }
-      dump(imin, imax);
-    }
-    void reset() {
-      Serial.println("Resetting regressor");
-      Serial.print ("BEFORE RESET CURRENT n = ");
-      Serial.println(n);
-      n = 0;
-      Serial.print ("DONE RESET CURRENT n = ");
-      Serial.println(n);
-      for (int i = 0; i < MAXLEN; i++) {
-        x[i] = 0;
-        y[i] = 0;
-      }
-      Serial.print ("AFTER RESET CURRENT n = ");
-      Serial.println(n);
-
-    }
-
-    void add (float xn, float yn) {
-      Serial.print(n);
-      int nw = n % (MAXLEN / 2);
-      x[nw] = xn;
-      y[nw] = yn;
-      x[MAXLEN / 2 + nw] = xn;
-      y[MAXLEN / 2 + nw] = yn;
-      n++;
-      Serial.println(" ADD CURRENT n, nw");
-      Serial.println(n);
-      Serial.println(nw);
-      Serial.println("I HAVE PUT TIME AND MASS:");
-      Serial.println(x[nw]);
-      Serial.println(y[nw]);
-    }
-
-    bool enoughPoints(int points) { //this method checks if there is enough data for average value to be correct  //warning: with certain points variable this may always return false because of small time for integration. See TRUSTED_AVERAGE_TIME
-      return enoughPoints(getImin(points), getImax(points));
-    }
-
-    bool enoughPoints(int imin, int imax) {
-      Serial.print(imin);
-      Serial.print (" can be trusted ");
-      Serial.println(imax);
-      dump(imin, imax);
-      float t = x[imax - 1] - x[imin];
-      Serial.print("Averaging period seconds ");
-      Serial.println(t);
-      if (t < MIN_TRUSTED_AVERAGE_TIME_SEC) {
-        //        Serial.print("Time too smal ");
-        //        Serial.println(MIN_TRUSTED_AVERAGE_TIME_SEC);
-        return (false);
-      } else {
-        return (true);
-      }
-    }
-
-    float getCoeff(int points) {  //don't forget to call enoughPoints method before using this one. It may return nan and not bother about it
-      Serial.print("Getting coeff by points: ");
-      Serial.println(points);
-      if (points > MAXLEN / 2) {
-        Serial.println("ERROR: bad points count came to average");
-        points = MAXLEN / 2;
-      }
-      // initialize variables
-      float xbar = 0;
-      float ybar = 0;
-      float xybar = 0;
-      float xsqbar = 0;
-      float lrCoef[2] = {0, 0};
-
-      int imin = getImin(points);
-      int imax = getImax(points);
-      //      dump(imin, imax); //debug
-
-      //      Serial.print ("cur n ");
-      //      Serial.println(n);
-
-      for (int i = imin; i < imax; i++) {
-        xbar = xbar + x[i];
-        ybar = ybar + y[i];
-        xybar = xybar + x[i] * y[i];
-        xsqbar = xsqbar + x[i] * x[i];
-      }
-      int npts = imax - imin;
-      xbar = xbar / npts;
-      ybar = ybar / npts;
-      xybar = xybar / npts;
-      xsqbar = xsqbar / npts;
-
-      //simple, stupid
-      float dx = 0;
-      float dy = 0;
-      float numM = 0;
-      float denM = 0;
-      for (int i = imin; i < imax; i++) {
-        dx = x[i] - xbar;
-        dy = y[i] - ybar;
-        numM += dx * dy;
-        denM += dx * dx;
-      }
-      return ( numM / denM);
-    }
 };
 
 float grSecToMlHr(float grSec) {
@@ -376,7 +194,8 @@ class ExpoAverage {
   public:
     bool firstPut = true;
     void init() {
-      MULT = exp(-4. / INTEGRAT_TIME);
+      firstPut = true;
+      MULT = exp(- SCALES_POLL_PERIOD * 1. / INTEGRAT_TIME);  //I am averaging speeds with equal weights. Exp argument is 1/N where N is the number of readings\calls\points
       //      Serial.print("MULT IS ");
       //      Serial.println(MULT);
       float sum = 0;
@@ -390,7 +209,7 @@ class ExpoAverage {
       Serial.println(denom);
     }
     void add(int dt, int dm) {
-      if (dt == 0) {
+      if (dt <= 0 || dt > 100) {  //magic constant 100. Used to deal with millis overflow. May fail though
         //        Serial.println("Insertion rejected");
         return;
       } else {
@@ -499,6 +318,10 @@ class ExpoAverage {
 */
 
 //#PUMP  TODO: add timer condition to poweroff the pump. Perhaps Class wrap would do good here too.
+void pumpInit() {
+  pinMode(PIN_PUMP, OUTPUT);
+  pumpOff();
+}
 void pumpOn() {
   Serial.println("Pump on");
   digitalWrite(PIN_PUMP, LOW);
@@ -518,6 +341,9 @@ void pumpControl(int currentMass) {
   if (currentMass > MASS_PUMP_OFF) {  //TODO add panic button or something like that
     pumpOff();
   }
+}
+bool pumpIsOn() {
+  return !digitalRead(PIN_PUMP);  //not tested. No reason to worry
 }
 //ENDOF #PUMP
 
@@ -542,18 +368,13 @@ void setup() {
       Serial.print("ASSERT FAILED. BAD MASS PUMP SETTINGS");
     }
   }
-  pinMode(PIN_PUMP, OUTPUT); //#PUMP
-  digitalWrite(PIN_PUMP, HIGH); //#PUMP //TODO: make pin assign
+  pumpInit();//#PUMP
   scales = new Scales();
-  scales->setupSWSerial();
+  scales -> setupSWSerial();
   chr = new Chronometer();
-  chr->setupRTC();
+  chr -> setupRTC();
   ea = new ExpoAverage();
-  ea->init(); //todo make expoaverage calculate multiplier dependent on needed time constant and whatever else if it has not been done already
-  //  lr = new LinReg();
-  //  lr->reset();
-  //  lr->dump();
-
+  ea -> init(); //todo make expoaverage calculate multiplier dependent on needed time constant and whatever else if it has not been done already
   //  sd = new SDCard();  //#SDCARD
   //  nextSDTime = millis() + SD_TIME_DELAY_SEC * 1000; //#SDCARD
 
@@ -566,15 +387,18 @@ void setup() {
 }
 
 void loop() { // run over and over
+  if (0xFFFFFFFF - millis() < 5000) { //Happy Millenium!
+    delay(6000);  //Wait for it
+    setup();  //Start a new life
+  }
+
 
   int curMass = scales->waitGetReading();
   if (curMass != -1) {
     if (curMass > prevMass) {
-      //        refillDelay();
       Serial.println("RESET");
       chr->reset();
-      ea->reset();
-      //      lr->reset();
+      ea->reset();  //there are two points of reset in the code
       refillEnd = millis() + REFILL_DELAY_SEC * 1000; //WATCH IT TODO REFACTOR TO INCLUDE PUMPONFLAG #PUMP
     }
 
@@ -587,9 +411,10 @@ void loop() { // run over and over
       Serial.print(':');
       Serial.println (curMass);
 
-      if (millis() > refillEnd) { //WATCH IT TODO REFACTOR TO INCLUDE PUMPONFLAG #PUMP
+      if (millis() > refillEnd && !pumpIsOn()) { //WATCH IT TODO REFACTOR TO INCLUDE PUMPONFLAG #PUMP
         ea->add(curTime - prevMassTime, prevMass - curMass);
-        //      lr->add(curTime, curMass);
+      } else {
+        ea->reset();  //there are two points of reset in the code
       }
       prevMass = curMass;
       prevMassTime = curTime;
