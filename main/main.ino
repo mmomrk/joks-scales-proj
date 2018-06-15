@@ -4,6 +4,7 @@
 #include <Wire.h>
 #include <SoftwareSerial.h>
 
+
 //Since this code is to be used for several tasks and I cannot compile bloat and push it to ardy MC completely AND I am noob enough to implement it via automated code generation
 //neither I am familiar with git submodules nor other stuff that could POTENTIALLY help me, some of the parts are to be commented out or in.
 // Use hashtags for the purposes:
@@ -34,10 +35,10 @@
 // SCK  <-> D13
 // CS   <-> D4
 // == LongerPump <-> ardy ( http://www.longerpump.com/index.php/OtherTechnicalArticles/show/152.html )
-// 1 <-> +5V* (speed control; 3.3V for slow debug)
-// 2 <-> D7 (?on-off switch. Does not work when to +5V?)
-// 4 <-> GND
-// 5 <-> GND
+// 1 <-> +5V* (speed control; 3.3V for slow debug)  [yellow]
+// 2 <-> D7 (?on-off switch. Does not work when to +5V?)  [orange]
+// 4 <-> GND  [green to 5]
+// 5 <-> GND  [black]
 //======================= Endof Circuit =======================
 
 
@@ -45,16 +46,18 @@ SoftwareSerial mySerial(8, 9, true); // RX, TX  //Do not refactor this line. DOn
 RTC_DS1307 RTC;
 
 
-#define SCALES_POLL_PERIOD  5 //sec
+#define SCALES_POLL_PERIOD  10 //sec
+//also check //const float INTEGRAT_TIME = 100; //sec for configuring averager
 #define AVER_PTS  3 //used for tests  //probably obsolete. Watch it, refactor candidate
 #define MAXLEN 128  //full buffer length. This is double the number of stored points for averageing //probably obsolete. Watch it, refactor candidate
 #define RHO 1.  //Liquid density. With good precision
 #define PIN_PUMP 7  //0v for ON state, +5v for OFF state
-const int REFILL_DELAY_SEC = 30;  //30 seconds default
+const int REFILL_DELAY_SEC = 30;  //30 seconds default //obsolete?
 const int MIN_TRUSTED_AVERAGE_TIME_SEC = 30;
 
-const int MASS_PUMP_ON = 1500; //#PUMP
-const int MASS_PUMP_OFF = 3200; //#PUMP
+//2300-800+600
+const int MASS_PUMP_ON = 1500; //gr   #PUMP
+const int MASS_PUMP_OFF = 2900; //gr  #PUMP
 //const int SD_TIME_DELAY_SEC = 30;//30 seconds ACHTUNG WARNING CHANGE TO SOMETHING MORE SANE FOR PROD #SDCARD
 
 
@@ -185,7 +188,7 @@ float grSecToMlMin(float grSec) {
 //#FLOWCALC
 class ExpoAverage {
   private:
-    const float INTEGRAT_TIME = 100; //sec
+    const float INTEGRAT_TIME = 150; //sec
     float MULT = .9;
     float bank = 0.;  //or buffer or average or numerator or whatever you call it. I call it bank today
     float dummy = 0;
@@ -218,7 +221,7 @@ class ExpoAverage {
         Serial.println(dm);
         float dmbydt = 1.* dm / dt;
         if (firstPut) { //for faster converge
-
+          Serial.println("Averager starting now");
           bank = dmbydt * denom;
           firstPut = false;
         } else {  //for the rest of our lives
@@ -408,8 +411,9 @@ void loop() { // run over and over
       //      continue;
     } else {
       Serial.print(curTime);
-      Serial.print(':');
-      Serial.println (curMass);
+      Serial.print(":%");
+      Serial.print(curMass);
+      Serial.println("^");
 
       if (millis() > refillEnd && !pumpIsOn()) { //WATCH IT TODO REFACTOR TO INCLUDE PUMPONFLAG #PUMP
         ea->add(curTime - prevMassTime, prevMass - curMass);
@@ -452,19 +456,22 @@ void loop() { // run over and over
   //  if (millis() - prevRecalcTime > 4000 && lr->enoughPoints(points)) { //removed commented-out section with averaging with diffeent points value. FOr certain reason adding those method calls resulted in complete mess of linear regressor work. Check git if you want to play with it
   if (millis() - prevRecalcTime > 10000 ) { //removed commented-out section with averaging with diffeent points value. FOr certain reason adding those method calls resulted in complete mess of linear regressor work. Check git if you want to play with it
 
-    Serial.print("Coeff is [ml/hour] :");
+    Serial.print("Coeff is [ml/hour] :$");
     prevRecalcTime = millis();
     float mlPerHr = grSecToMlHr(ea->getAver());
-    Serial.println(mlPerHr);
-    Serial.print("Trust rate: ");
+    Serial.print(mlPerHr);
+    Serial.println("^");
+    Serial.print("Trust rate: @");
     float tr = ea->getTrustRate();
-    Serial.println(tr);
+    Serial.print(tr);
+    Serial.println("^");
     //UNCOMMENT THIS WHEN #CONTROL IS NEEDED:
-    //    if (tr > .9) {
-    //      Serial.print("#");
-    //      Serial.println( requiredFlow / mlPerHr);
-    //      ea->reset();//WATCH IT TEST IT
-    //    }
+    if (tr > .96) { //todo unmagic const
+      Serial.print("~");
+      Serial.print( requiredFlow / mlPerHr);
+      Serial.println("^");
+      ea->reset();//WATCH IT TEST IT
+    }
   }
   pumpControl(curMass); //#PUMP
-}
+};
